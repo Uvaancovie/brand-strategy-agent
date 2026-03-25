@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brand Strategy Agent — Volcanic Marketing</title>
+  <meta name="description" content="AI-powered Brand Strategy Agent that extracts and builds your complete 8-section brand strategy from meeting transcripts." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Ambient background -->
+    <div class="ambient-bg">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <div class="logo">
+          <div class="logo-icon">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M16 2L28 8V24L16 30L4 24V8L16 2Z" stroke="url(#logo-grad)" stroke-width="2" fill="none"/>
+              <path d="M16 8L22 11V19L16 22L10 19V11L16 8Z" fill="url(#logo-grad)"/>
+              <defs><linearGradient id="logo-grad" x1="4" y1="2" x2="28" y2="30"><stop stop-color="#FF6B35"/><stop offset="1" stop-color="#F7C948"/></linearGradient></defs>
+            </svg>
+          </div>
+          <div class="logo-text">
+            <span class="logo-brand">Volcanic</span>
+            <span class="logo-sub">Brand Strategy Agent</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="btn-reset" class="btn-ghost" title="Start Over">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+            Reset
+          </button>
+          <button id="btn-export" class="btn-primary-sm">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Export
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main layout -->
+    <main class="main-layout">
+      <!-- Sidebar: Section Navigation -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-title">Framework Sections</div>
+        <nav class="section-nav" id="section-nav">
+          <!-- Populated by JS -->
+        </nav>
+        <div class="sidebar-progress">
+          <div class="progress-label">
+            <span>Progress</span>
+            <span id="progress-pct">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center: Chat + Input -->
+      <section class="chat-area">
+        <div class="chat-messages" id="chat-messages">
+          <!-- Messages rendered by JS -->
+        </div>
+        <div class="chat-input-area">
+          <div class="input-wrapper">
+            <button id="btn-mic" class="btn-mic" title="Record Audio">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
+            <textarea id="chat-input" placeholder="Paste your meeting transcript or describe your brand..." rows="1"></textarea>
+            <button id="btn-send" class="btn-send" title="Send">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+          <p class="input-hint">🎙️ Click the mic to record audio, paste a transcript, or type freely. The agent will extract your brand strategy.</p>
+        </div>
+      </section>
+
+      <!-- Right Panel: BrandScript Card -->
+      <aside class="brandscript-panel" id="brandscript-panel">
+        <div class="panel-header">
+          <h2>BrandScript Card</h2>
+          <button id="btn-toggle-panel" class="btn-icon" title="Toggle Panel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </button>
+        </div>
+        <div class="brandscript-content" id="brandscript-content">
+          <!-- Populated by JS -->
+        </div>
+      </aside>
+    </main>
+
+    <!-- Recording Overlay (Full Screen Fixed) -->
+    <div class="recording-overlay" id="recording-overlay">
+      <div class="recording-inner">
+        <div class="recording-pulse-ring"></div>
+        <div class="recording-icon">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        </div>
+        <canvas id="waveform-canvas" class="waveform-canvas"></canvas>
+        <div class="recording-timer" id="recording-timer">00:00</div>
+        <div class="recording-status">Recording<span class="recording-dots"></span></div>
+        <div class="recording-live-text" id="recording-live-text"></div>
+        <div class="recording-controls">
+          <button id="btn-cancel-recording" class="btn-recording-cancel" title="Cancel Recording">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            Cancel
+          </button>
+          <button id="btn-stop-recording" class="btn-recording-stop" title="Stop and Transcribe">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+            Stop &amp; Transcribe
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
