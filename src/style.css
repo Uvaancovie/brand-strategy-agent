@@ -1587,12 +1587,143 @@ body {
   .chat-input-area { max-height: 48vh; }
 }
 @media (max-width: 900px) {
-  .main-layout { grid-template-columns: 1fr; }
-  .sidebar, .brandscript-panel { display: none; }
+  .main-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+  .sidebar {
+    display: flex;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    max-height: 30vh;
+    min-height: 128px;
+    overflow: hidden;
+  }
+  .sidebar-title {
+    margin-bottom: 8px;
+    padding-left: 2px;
+  }
+  .section-nav {
+    flex: 1;
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px;
+  }
+  .section-nav::-webkit-scrollbar {
+    height: 4px;
+  }
+  .section-nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12);
+    border-radius: 999px;
+  }
+  .nav-item {
+    min-width: 190px;
+    flex-shrink: 0;
+  }
+  .sidebar-progress {
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+  .chat-area {
+    flex: 1;
+    min-height: 0;
+  }
+  .chat-messages {
+    padding: 16px 14px;
+  }
+  .chat-input-area {
+    max-height: 48vh;
+    padding: 12px 14px 14px;
+  }
+  .brandscript-panel {
+    display: flex;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+    max-height: 36vh;
+    min-height: 180px;
+  }
+  .panel-header {
+    padding: 12px 14px;
+  }
+  .panel-header h2 {
+    font-size: 0.78rem;
+  }
+  .brandscript-content {
+    padding: 12px;
+  }
   .header-actions { gap: 6px; }
   .session-indicator { display: none; }
   .interview-card { max-width: 100%; }
-  .chat-input-area { max-height: 52vh; padding: 12px 16px 16px; }
+  .message { max-width: 100%; }
+}
+
+@media (max-width: 640px) {
+  .header-inner {
+    padding: 0 10px;
+  }
+  .logo-sub {
+    display: none;
+  }
+  .btn-ghost,
+  .btn-primary-sm {
+    padding: 8px 10px;
+    font-size: 0.74rem;
+    gap: 4px;
+  }
+  .nav-item {
+    min-width: 170px;
+    padding: 10px;
+  }
+  .nav-label {
+    font-size: 0.78rem;
+  }
+  .chat-messages {
+    padding: 12px 10px;
+    gap: 12px;
+  }
+  .message-bubble {
+    padding: 12px 14px;
+    font-size: 0.84rem;
+  }
+  .context-box {
+    padding: 10px;
+  }
+  .context-box-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .context-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .btn-context {
+    width: 100%;
+  }
+  .input-wrapper {
+    gap: 6px;
+  }
+  .btn-upload,
+  .btn-mic {
+    width: 40px;
+    height: 40px;
+  }
+  #chat-input {
+    padding: 12px 50px 12px 12px;
+    font-size: 0.84rem;
+  }
+  .chat-input-area {
+    max-height: 52vh;
+    padding: 10px;
+  }
+  .brandscript-panel {
+    max-height: 38vh;
+  }
 }
 
 
