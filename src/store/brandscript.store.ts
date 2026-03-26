@@ -1,0 +1,122 @@
+// ─── BRANDSCRIPT STORE ──────────────────────────────────────────────
+// Central state management with localStorage persistence
+
+import { FRAMEWORK, type BrandScript, type SectionId, type ChatMessage } from '../config/framework';
+
+const STORAGE_KEY = 'vmv8-brand-strategy-session';
+const MAX_HISTORY = 20;
+
+export interface AppState {
+  activeSection: number;
+  messages: ChatMessage[];
+  brandscript: BrandScript;
+  manualSectionCompletion: Partial<Record<SectionId, boolean>>;
+  conversationHistory: ChatMessage[];
+}
+
+function createEmptyBrandscript(): BrandScript {
+  const bs = {} as BrandScript;
+  FRAMEWORK.forEach(section => {
+    bs[section.id] = {};
+    section.fields.forEach(field => {
+      bs[section.id][field.id] = '';
+    });
+  });
+  return bs;
+}
+
+export const state: AppState = {
+  activeSection: 0,
+  messages: [],
+  brandscript: createEmptyBrandscript(),
+  manualSectionCompletion: {},
+  conversationHistory: [],
+};
+
+// ─── PERSISTENCE ────────────────────────────────────────────────────
+
+export function saveSession(): void {
+  try {
+    const data = {
+      brandscript: state.brandscript,
+      conversationHistory: state.conversationHistory.slice(-MAX_HISTORY),
+      manualSectionCompletion: state.manualSectionCompletion,
+      activeSection: state.activeSection,
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+    const el = document.getElementById('session-status-text');
+    if (el) {
+      el.textContent = 'Saved';
+      setTimeout(() => { el.textContent = 'Auto-saved'; }, 2000);
+    }
+  } catch (e) {
+    console.warn('Session save failed:', e);
+  }
+}
+
+export function loadSession(): boolean {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (data.brandscript) state.brandscript = data.brandscript;
+    if (data.conversationHistory) state.conversationHistory = data.conversationHistory;
+    if (data.manualSectionCompletion) state.manualSectionCompletion = data.manualSectionCompletion;
+    if (data.activeSection !== undefined) state.activeSection = data.activeSection;
+    return true;
+  } catch (e) {
+    console.warn('Session load failed:', e);
+    return false;
+  }
+}
+
+export function clearSession(): void {
+  state.messages = [];
+  state.activeSection = 0;
+  state.conversationHistory = [];
+  state.manualSectionCompletion = {};
+  state.brandscript = createEmptyBrandscript();
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+// ─── HELPERS ────────────────────────────────────────────────────────
+
+export function isSectionCompleted(sectionId: SectionId): boolean {
+  if (state.manualSectionCompletion[sectionId]) return true;
+  const section = FRAMEWORK.find(s => s.id === sectionId);
+  if (!section) return false;
+  return section.fields.every(f => state.brandscript[sectionId][f.id]);
+}
+
+export function getFilledCount(sectionId: SectionId): number {
+  const section = FRAMEWORK.find(s => s.id === sectionId);
+  if (!section) return 0;
+  return section.fields.filter(f => state.brandscript[sectionId][f.id]).length;
+}
+
+export function getTrimmedHistory(): ChatMessage[] {
+  return state.conversationHistory.slice(-MAX_HISTORY);
+}
+
+export function hasExistingData(): boolean {
+  return Object.values(state.brandscript).some(s => Object.values(s).some(v => v));
+}
+
+export function getProgressStats(): { total: number; filled: number; pct: number } {
+  let total = 0, filled = 0;
+  FRAMEWORK.forEach(section => {
+    if (state.manualSectionCompletion[section.id]) {
+      total += section.fields.length;
+      filled += section.fields.length;
+    } else {
+      section.fields.forEach(field => {
+        total++;
+        if (state.brandscript[section.id][field.id]) filled++;
+      });
+    }
+  });
+  const pct = Math.round((filled / total) * 100);
+  return { total, filled, pct };
+}
