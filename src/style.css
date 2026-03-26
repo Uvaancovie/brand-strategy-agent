@@ -618,7 +618,7 @@ body {
   gap: 20px;
   position: relative;
   width: 100%;
-  max-width: 560px;
+  max-width: 800px;
   padding: 40px;
 }
 
@@ -689,26 +689,47 @@ body {
   75% { content: '...'; }
 }
 
+.live-cursor {
+  display: inline-block;
+  width: 3px;
+  height: 1.1em;
+  background-color: #FF6B6B;
+  vertical-align: middle;
+  margin-left: 6px;
+  animation: cursorBlink 1s step-end infinite;
+}
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 /* Live transcription text */
 .recording-live-text {
   width: 100%;
-  max-width: 480px;
-  min-height: 60px;
-  max-height: 140px;
+  max-width: 720px;
+  min-height: 180px;
+  max-height: 350px;
   overflow-y: auto;
-  padding: 16px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-md);
-  font-size: 0.88rem;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  font-style: italic;
+  padding: 30px 40px;
+  background: rgba(20, 20, 28, 0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+  font-size: 1.35rem; /* Larger font for better readability */
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+  transition: all 0.3s ease;
+  scroll-behavior: smooth;
+  text-align: center;
 }
 .recording-live-text:empty::before {
   content: 'Listening for speech...';
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 1.2rem;
+  font-style: italic;
+  font-weight: 400;
 }
 
 .recording-controls {

@@ -852,9 +852,8 @@ const audioState = {
   animationFrame: null,
   timerInterval: null,
   startTime: null,
-  recognition: null,
-  transcribedText: '',
-  interimText: '',
+  liveTranscriptionInterval: null,
+  liveTranscript: '',
 };
 
 // Check for Speech Recognition support
@@ -967,13 +966,23 @@ async function startRecording() {
     });
 
     audioState.audioChunks = [];
-    audioState.mediaRecorder = new MediaRecorder(audioState.stream);
+    audioState.liveTranscript = '';
+
+    // Determine supported mime type for cross-browser compatibility (e.g., Safari vs Chrome)
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 
+                     MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 
+                     MediaRecorder.isTypeSupported('audio/aac') ? 'audio/aac' : '';
+    audioState.mimeType = mimeType;
+    audioState.fileExtension = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('aac') ? 'aac' : 'webm';
+
+    const options = mimeType ? { mimeType } : {};
+    audioState.mediaRecorder = new MediaRecorder(audioState.stream, options);
     audioState.mediaRecorder.ondataavailable = event => {
       if (event.data.size > 0) {
         audioState.audioChunks.push(event.data);
       }
     };
-    audioState.mediaRecorder.start();
+    audioState.mediaRecorder.start(2000); // Capture chunks every 2 seconds
 
     // Set up Web Audio API for visualization
     audioState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -988,10 +997,54 @@ async function startRecording() {
     // Update UI
     btnMic.classList.add('recording');
     recordingOverlay.classList.add('active');
-    if (recordingLiveText) recordingLiveText.innerHTML = '<span style="color: var(--text-muted)">Recording audio...</span>';
+    if (recordingLiveText) recordingLiveText.innerHTML = '<span style="color: var(--text-muted)">Listening for speech...</span>';
     
     startTimer();
     drawWaveform();
+
+    // Live transcription interval
+    let isTranscribing = false;
+    audioState.liveTranscriptionInterval = setInterval(async () => {
+      if (!isTranscribing && audioState.audioChunks.length > 0) {
+        isTranscribing = true;
+        try {
+          const mimeStr = audioState.mimeType || 'audio/webm';
+          const extStr = audioState.fileExtension || 'webm';
+          const audioBlob = new Blob(audioState.audioChunks, { type: mimeStr });
+          const file = new File([audioBlob], `live.${extStr}`, { type: mimeStr });
+
+          const transcription = await groq.audio.transcriptions.create({
+            file: file,
+            model: "whisper-large-v3-turbo",
+            temperature: 0,
+            response_format: "json",
+          });
+
+          audioState.liveTranscript = transcription.text || "";
+
+          if (recordingLiveText && audioState.isRecording) {
+            const words = audioState.liveTranscript.split(' ');
+            const recentWordsCount = 6;
+            let displayHtml = audioState.liveTranscript;
+            
+            if (words.length > recentWordsCount) {
+              const oldWords = words.slice(0, -recentWordsCount).join(' ');
+              const newWords = words.slice(-recentWordsCount).join(' ');
+              displayHtml = `${oldWords} <span style="color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.6);">${newWords}</span>`;
+            } else if (words.length > 0 && words[0] !== "") {
+              displayHtml = `<span style="color: #fff; text-shadow: 0 0 12px rgba(255,255,255,0.6);">${displayHtml}</span>`;
+            }
+
+            recordingLiveText.innerHTML = displayHtml + '<span class="live-cursor"></span>';
+            recordingLiveText.scrollTop = recordingLiveText.scrollHeight;
+          }
+        } catch (e) {
+          console.warn("Live transcription error:", e);
+        } finally {
+          isTranscribing = false;
+        }
+      }
+    }, 2500);
 
   } catch (err) {
     console.error('Error starting recording:', err);
@@ -1010,6 +1063,11 @@ async function stopRecording(sendTranscription = true) {
   
   audioState.isRecording = false;
 
+  if (audioState.liveTranscriptionInterval) {
+    clearInterval(audioState.liveTranscriptionInterval);
+    audioState.liveTranscriptionInterval = null;
+  }
+
   const processAudio = sendTranscription;
 
   if (audioState.mediaRecorder) {
@@ -1024,9 +1082,11 @@ async function stopRecording(sendTranscription = true) {
         if (recordingLiveText) recordingLiveText.innerHTML = '<span style="color: var(--text-muted)">Transcribing with Whisper (Groq)...</span>';
         
         try {
-          const audioBlob = new Blob(audioState.audioChunks, { type: 'audio/webm' });
-          const file = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
-          
+          const mimeStr = audioState.mimeType || 'audio/webm';
+          const extStr = audioState.fileExtension || 'webm';
+          const audioBlob = new Blob(audioState.audioChunks, { type: mimeStr });
+          const file = new File([audioBlob], `audio.${extStr}`, { type: mimeStr });
+
           const transcription = await groq.audio.transcriptions.create({
             file: file,
             model: "whisper-large-v3-turbo",
