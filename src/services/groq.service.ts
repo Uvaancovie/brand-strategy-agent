@@ -26,8 +26,12 @@ function buildBrandscriptContext(): string {
 
 // ─── CHAT COMPLETION (JSON MODE) ────────────────────────────────────
 
-export async function callGroq(userText: string, retries = 2): Promise<AgentResponse> {
-  const contextInjection = `\n\n---\n## CURRENT B.I.G DOC STATUS:\n${buildBrandscriptContext()}\n---\n`;
+export async function callGroq(userText: string, retries = 2, referenceContext = ''): Promise<AgentResponse> {
+  const referenceInjection = referenceContext.trim()
+    ? `\n\n## COLLECTED BUSINESS CONTEXT (REFERENCE ONLY):\n${referenceContext}\n\nUse this only as supporting context for responses. Do not proactively fill framework fields unless the user explicitly asks to extract or refine section answers in their current message.`
+    : '';
+
+  const contextInjection = `\n\n---\n## CURRENT B.I.G DOC STATUS:\n${buildBrandscriptContext()}${referenceInjection}\n---\n`;
 
   const trimmedHistory = getTrimmedHistory();
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -54,7 +58,7 @@ export async function callGroq(userText: string, retries = 2): Promise<AgentResp
     if (retries > 0 && error.message && (error.message.includes('quota') || error.message.includes('429'))) {
       console.warn(`Rate limit hit. Retrying... (${retries} left)`);
       await delay(2500);
-      return callGroq(userText, retries - 1);
+      return callGroq(userText, retries - 1, referenceContext);
     }
     throw err;
   }

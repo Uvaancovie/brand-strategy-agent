@@ -57,6 +57,7 @@
       <!-- Sidebar: Section Navigation -->
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-title">Framework Sections</div>
+        <button id="nav-context-summary" class="nav-context-summary hidden" type="button">🧭 Context Summary</button>
         <nav class="section-nav" id="section-nav">
           <!-- Populated by JS -->
         </nav>
@@ -85,6 +86,180 @@
             <p class="upload-text">Drop audio file here</p>
             <p class="upload-formats">MP3, WAV, M4A, WEBM, OGG — max 25MB</p>
           </div>
+
+          <div class="context-box">
+            <div class="context-box-header">
+              <span>Context Sources</span>
+              <label class="context-no-website">
+                <input type="checkbox" id="ctx-no-website" />
+                No website available
+              </label>
+            </div>
+
+            <div class="context-grid">
+              <input id="ctx-website" type="url" placeholder="Website URL (https://example.com)" />
+              <input id="ctx-linkedin" type="url" placeholder="LinkedIn URL (profile or company page)" />
+            </div>
+
+            <div class="context-grid context-grid-manual">
+              <select id="ctx-industry">
+                <option value="" selected disabled>Select Industry</option>
+                <option>Advertising & Marketing</option>
+                <option>Agriculture</option>
+                <option>Architecture</option>
+                <option>Automotive</option>
+                <option>Aviation</option>
+                <option>Beauty & Cosmetics</option>
+                <option>Biotechnology</option>
+                <option>Construction</option>
+                <option>Consulting</option>
+                <option>Consumer Goods</option>
+                <option>Creative & Media</option>
+                <option>Cybersecurity</option>
+                <option>E-commerce</option>
+                <option>Education</option>
+                <option>Energy & Utilities</option>
+                <option>Engineering</option>
+                <option>Entertainment</option>
+                <option>Environmental Services</option>
+                <option>Events & Hospitality</option>
+                <option>Fashion & Apparel</option>
+                <option>Finance & Banking</option>
+                <option>Food & Beverage</option>
+                <option>Government & Public Sector</option>
+                <option>Healthcare</option>
+                <option>Human Resources</option>
+                <option>Information Technology</option>
+                <option>Insurance</option>
+                <option>Legal Services</option>
+                <option>Logistics & Supply Chain</option>
+                <option>Manufacturing</option>
+                <option>Nonprofit & NGO</option>
+                <option>Pharmaceuticals</option>
+                <option>Professional Services</option>
+                <option>Real Estate</option>
+                <option>Retail</option>
+                <option>Sports & Recreation</option>
+                <option>Telecommunications</option>
+                <option>Travel & Tourism</option>
+                <option>Other</option>
+              </select>
+
+              <select id="ctx-profession">
+                <option value="" selected disabled>Select Profession</option>
+                <option>Accountant</option>
+                <option>Architect</option>
+                <option>Business Analyst</option>
+                <option>Business Coach</option>
+                <option>CEO / Founder</option>
+                <option>Consultant</option>
+                <option>Content Creator</option>
+                <option>Copywriter</option>
+                <option>Customer Success Manager</option>
+                <option>Data Analyst</option>
+                <option>Designer (Graphic/UI/UX)</option>
+                <option>Developer / Engineer</option>
+                <option>Doctor / Medical Professional</option>
+                <option>Educator / Trainer</option>
+                <option>Event Planner</option>
+                <option>Financial Advisor</option>
+                <option>HR Professional</option>
+                <option>Lawyer / Legal Advisor</option>
+                <option>Marketing Manager</option>
+                <option>Operations Manager</option>
+                <option>Photographer / Videographer</option>
+                <option>Product Manager</option>
+                <option>Project Manager</option>
+                <option>Real Estate Agent</option>
+                <option>Recruiter</option>
+                <option>Sales Professional</option>
+                <option>Social Media Manager</option>
+                <option>Software Consultant</option>
+                <option>Startup Founder</option>
+                <option>Therapist / Counselor</option>
+                <option>Virtual Assistant</option>
+                <option>Other</option>
+              </select>
+
+              <select id="ctx-services">
+                <option value="" selected disabled>Select Primary Service Offered</option>
+                <option>Accounting & Bookkeeping</option>
+                <option>Advertising Campaigns</option>
+                <option>App Development</option>
+                <option>Brand Strategy</option>
+                <option>Business Consulting</option>
+                <option>Career Coaching</option>
+                <option>Content Marketing</option>
+                <option>Copywriting</option>
+                <option>Customer Support Services</option>
+                <option>Data & Analytics Services</option>
+                <option>Digital Marketing</option>
+                <option>E-commerce Store Setup</option>
+                <option>Email Marketing</option>
+                <option>Event Management</option>
+                <option>Financial Planning</option>
+                <option>Graphic Design</option>
+                <option>HR & Recruitment</option>
+                <option>IT Support</option>
+                <option>Legal Advisory</option>
+                <option>Logo & Visual Identity Design</option>
+                <option>Operations Optimization</option>
+                <option>PR & Communications</option>
+                <option>Photography & Video Production</option>
+                <option>Sales Enablement</option>
+                <option>Search Engine Optimization (SEO)</option>
+                <option>Social Media Management</option>
+                <option>Training & Workshops</option>
+                <option>UI/UX Design</option>
+                <option>Web Design</option>
+                <option>Web Development</option>
+                <option>Other</option>
+              </select>
+
+              <select id="ctx-country">
+                <option value="" selected disabled>Select Country</option>
+                <option>Australia</option>
+                <option>Canada</option>
+                <option>France</option>
+                <option>Germany</option>
+                <option>India</option>
+                <option>Indonesia</option>
+                <option>Ireland</option>
+                <option>Italy</option>
+                <option>Kenya</option>
+                <option>Malaysia</option>
+                <option>Netherlands</option>
+                <option>New Zealand</option>
+                <option>Nigeria</option>
+                <option>Philippines</option>
+                <option>Portugal</option>
+                <option>Saudi Arabia</option>
+                <option>Singapore</option>
+                <option>South Africa</option>
+                <option>Spain</option>
+                <option>Sweden</option>
+                <option>Switzerland</option>
+                <option>United Arab Emirates</option>
+                <option>United Kingdom</option>
+                <option>United States</option>
+                <option>Other</option>
+              </select>
+            </div>
+
+            <div class="context-actions">
+              <button id="btn-use-context" class="btn-context">Collect Context</button>
+            </div>
+
+            <div class="context-loading hidden" id="ctx-loading">
+              <div class="context-loading-spinner"></div>
+              <div class="context-loading-copy">
+                <div class="context-loading-title" id="ctx-loading-title">Collecting context...</div>
+                <div class="context-loading-subtitle" id="ctx-loading-subtitle">Scraping and preparing strategic overview.</div>
+              </div>
+            </div>
+
+          </div>
+
           <div class="input-wrapper">
             <button id="btn-upload" class="btn-upload" title="Upload Audio File">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -109,6 +284,10 @@
           <button id="btn-toggle-panel" class="btn-icon" title="Toggle Panel">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
           </button>
+        </div>
+        <div class="context-summary-panel hidden" id="context-summary-panel">
+          <div class="context-summary-overview" id="context-summary-overview"></div>
+          <div class="context-summary-panels" id="context-summary-panels"></div>
         </div>
         <div class="brandscript-content" id="brandscript-content">
           <!-- Populated by JS -->

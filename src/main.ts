@@ -15,6 +15,7 @@ import { state, saveSession, loadSession, clearSession, getFilledCount, getProgr
 import { callGroq } from './services/groq.service';
 import { applyExtractions } from './services/extraction.service';
 import { startRecording, stopRecording, processAudioFile, audioState } from './services/audio.service';
+import { scrapeContextSources } from './services/scrape.service';
 
 // Components
 import { renderMessage, showTyping, removeTyping } from './components/ChatPanel';
@@ -51,16 +52,63 @@ const processingTitle = document.getElementById('processing-title')!;
 const processingSubtitle = document.getElementById('processing-subtitle')!;
 const processingProgressBar = document.getElementById('processing-progress-bar')!;
 
+// Context inputs
+const ctxWebsite = document.getElementById('ctx-website') as HTMLInputElement;
+const ctxLinkedin = document.getElementById('ctx-linkedin') as HTMLInputElement;
+const ctxIndustry = document.getElementById('ctx-industry') as HTMLSelectElement;
+const ctxProfession = document.getElementById('ctx-profession') as HTMLSelectElement;
+const ctxServices = document.getElementById('ctx-services') as HTMLSelectElement;
+const ctxCountry = document.getElementById('ctx-country') as HTMLSelectElement;
+const ctxNoWebsite = document.getElementById('ctx-no-website') as HTMLInputElement;
+const btnUseContext = document.getElementById('btn-use-context') as HTMLButtonElement;
+const ctxLoading = document.getElementById('ctx-loading') as HTMLDivElement;
+const ctxLoadingTitle = document.getElementById('ctx-loading-title') as HTMLDivElement;
+const ctxLoadingSubtitle = document.getElementById('ctx-loading-subtitle') as HTMLDivElement;
+const navContextSummary = document.getElementById('nav-context-summary') as HTMLButtonElement;
+const contextSummaryPanel = document.getElementById('context-summary-panel') as HTMLDivElement;
+const contextSummaryOverview = document.getElementById('context-summary-overview') as HTMLDivElement;
+const contextSummaryPanels = document.getElementById('context-summary-panels') as HTMLDivElement;
+
+interface ContextPanel {
+  title: string;
+  subtitle: string;
+  body: string;
+}
+
+let collectedContextPayload = '';
+let collectedContextOverview = '';
+let collectedContextPanels: ContextPanel[] = [];
+let rightPanelView: 'brandscript' | 'context' = 'brandscript';
+
+function setRightPanelView(view: 'brandscript' | 'context'): void {
+  rightPanelView = view;
+  const hasContext = !!collectedContextOverview && collectedContextPanels.length > 0;
+
+  if (view === 'context' && hasContext) {
+    contextSummaryPanel.classList.remove('hidden');
+    brandscriptContent.classList.add('hidden');
+    navContextSummary.classList.add('active');
+  } else {
+    contextSummaryPanel.classList.add('hidden');
+    brandscriptContent.classList.remove('hidden');
+    navContextSummary.classList.remove('active');
+  }
+}
+
 // ─── REFRESH ALL UI ─────────────────────────────────────────────────
 
 function refreshUI(): void {
   renderNav(sectionNav, progressFill, progressPct, () => refreshUI(), startInterviewFlow);
   renderBrandscript(brandscriptContent);
+  if (rightPanelView !== 'context') {
+    setRightPanelView('brandscript');
+  }
 }
 
 // ─── INTERVIEW FLOW ─────────────────────────────────────────────────
 
 function startInterviewFlow(startSectionIndex = 0): void {
+  setRightPanelView('brandscript');
   const sectionId = FRAMEWORK[startSectionIndex]?.id;
   if (!sectionId) return;
 
@@ -155,7 +203,7 @@ async function handleUserInput(text: string): Promise<void> {
 
   try {
     // JSON mode call — returns typed { message, extractions }
-    const response = await callGroq(text);
+    const response = await callGroq(text, 2, collectedContextPayload);
 
     removeTyping();
 
@@ -195,6 +243,188 @@ function addSystemMessage(msg: ChatMessage): void {
   renderMessage(chatMessages, msg, handleUserInput);
 }
 
+function setContextLoading(loading: boolean, title = 'Collecting context...', subtitle = 'Scraping and preparing strategic overview.'): void {
+  ctxLoading.classList.toggle('hidden', !loading);
+  ctxLoadingTitle.textContent = title;
+  ctxLoadingSubtitle.textContent = subtitle;
+}
+
+function summarizeContext(text: string, limit = 260): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact) return 'No summary available.';
+  return compact.length > limit ? `${compact.slice(0, limit).trim()}...` : compact;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderContextSummary(overview: string, panels: ContextPanel[]): void {
+  if (!overview || panels.length === 0) {
+    navContextSummary.classList.add('hidden');
+    contextSummaryOverview.textContent = '';
+    contextSummaryPanels.innerHTML = '';
+    setRightPanelView('brandscript');
+    return;
+  }
+
+  navContextSummary.classList.remove('hidden');
+  contextSummaryOverview.textContent = overview;
+
+  contextSummaryPanels.innerHTML = panels.map(panel => {
+    return `
+      <details class="context-preview-panel">
+        <summary>
+          <span class="context-preview-title">${escapeHtml(panel.title)}</span>
+          <span class="context-preview-subtitle">${escapeHtml(panel.subtitle)}</span>
+        </summary>
+        <div class="context-preview-body">${escapeHtml(panel.body)}</div>
+      </details>
+    `;
+  }).join('');
+}
+
+function clearCollectedContext(): void {
+  collectedContextPayload = '';
+  collectedContextOverview = '';
+  collectedContextPanels = [];
+  renderContextSummary('', []);
+}
+
+function openContextSummaryPanel(): void {
+  if (!collectedContextOverview || collectedContextPanels.length === 0) return;
+  renderContextSummary(collectedContextOverview, collectedContextPanels);
+  setRightPanelView('context');
+  contextSummaryPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function handleContextIngestion(): Promise<void> {
+  const websiteUrl = ctxWebsite.value.trim();
+  const linkedinUrl = ctxLinkedin.value.trim();
+  const noWebsite = ctxNoWebsite.checked;
+
+  const industry = ctxIndustry.value.trim();
+  const profession = ctxProfession.value.trim();
+  const services = ctxServices.value.trim();
+  const country = ctxCountry.value.trim();
+
+  if (!websiteUrl && !linkedinUrl && !noWebsite) {
+    addSystemMessage({
+      role: 'agent',
+      content: 'Add at least one source: **Website URL**, **LinkedIn URL**, or mark **No website available**.',
+    });
+    return;
+  }
+
+  if (noWebsite) {
+    const missing: string[] = [];
+    if (!industry) missing.push('Industry');
+    if (!profession) missing.push('Profession');
+    if (!services) missing.push('Services offered');
+    if (!country) missing.push('Country');
+
+    if (missing.length > 0) {
+      addSystemMessage({
+        role: 'agent',
+        content: `For businesses without a website, please complete: **${missing.join(', ')}**.`,
+      });
+      return;
+    }
+  }
+
+  clearCollectedContext();
+  btnUseContext.disabled = true;
+  const oldLabel = btnUseContext.textContent || 'Collect Context';
+  btnUseContext.textContent = 'Collecting context...';
+  setContextLoading(true, 'Collecting context...', 'Scraping and generating a strategic overview from your sources.');
+
+  try {
+    let referenceContext = '';
+    const contextPanels: ContextPanel[] = [];
+    const sourceLabels: string[] = [];
+    let totalChars = 0;
+
+    if (!noWebsite && (websiteUrl || linkedinUrl)) {
+      setContextLoading(true, 'Scraping sources...', 'Fetching and cleaning content from website/LinkedIn.');
+      const results = await scrapeContextSources({ websiteUrl, linkedinUrl });
+      const successful = results.filter(r => r.ok && r.text);
+      const failed = results.filter(r => !r.ok);
+
+      if (successful.length > 0) {
+        referenceContext += successful.map(result => {
+          if (result.text) {
+            const label = result.source === 'website' ? 'Website' : 'LinkedIn';
+            sourceLabels.push(label);
+            totalChars += result.text.length;
+            contextPanels.push({
+              title: `${label} Context`,
+              subtitle: `${result.url} · ${result.text.length.toLocaleString()} chars`,
+              body: result.text,
+            });
+          }
+          return `### ${result.source.toUpperCase()} CONTEXT (${result.url})\n${result.text}`;
+        }).join('\n\n');
+      }
+
+      if (failed.length > 0) {
+        addSystemMessage({
+          role: 'agent',
+          content: `Some sources could not be scraped: ${failed.map(f => `${f.source} (${f.error})`).join('; ')}`,
+        });
+      }
+    }
+
+    if (noWebsite) {
+      const manualProfile = `Industry: ${industry}\nProfession: ${profession}\nServices offered: ${services}\nCountry: ${country}`;
+      referenceContext += `\n\n### MANUAL BUSINESS PROFILE\n- Industry: ${industry}\n- Profession: ${profession}\n- Services offered: ${services}\n- Country: ${country}`;
+      sourceLabels.push('Manual Profile');
+      totalChars += manualProfile.length;
+      contextPanels.push({
+        title: 'Manual Business Profile',
+        subtitle: 'User-provided fallback context',
+        body: manualProfile,
+      });
+    }
+
+    const usableContext = referenceContext.trim();
+
+    if (!usableContext) {
+      addSystemMessage({
+        role: 'agent',
+        content: 'No usable context was collected. Please adjust URLs or provide manual profile details.',
+      });
+      return;
+    }
+
+    collectedContextPayload = usableContext;
+    const uniqueSources = Array.from(new Set(sourceLabels));
+    const overview = `Generated overview from ${uniqueSources.length} source${uniqueSources.length === 1 ? '' : 's'} (${uniqueSources.join(', ')}), with about ${totalChars.toLocaleString()} characters of usable context. Click any panel to preview details. This context is now used as reference for future framework answers.`;
+    collectedContextOverview = overview;
+    collectedContextPanels = contextPanels.map(panel => ({
+      ...panel,
+      body: summarizeContext(panel.body, 1800),
+    }));
+
+    setContextLoading(false);
+    renderContextSummary(collectedContextOverview, collectedContextPanels);
+    openContextSummaryPanel();
+
+    addSystemMessage({
+      role: 'agent',
+      content: '✅ Context collected successfully. It is now saved as reference context for future framework answers and can be reviewed from **Context Summary** in the left navigation.',
+    });
+  } finally {
+    setContextLoading(false);
+    btnUseContext.disabled = false;
+    btnUseContext.textContent = oldLabel;
+  }
+}
+
 // ─── EVENT LISTENERS ────────────────────────────────────────────────
 
 btnSend.addEventListener('click', () => handleUserInput(chatInput.value));
@@ -211,10 +441,33 @@ chatInput.addEventListener('input', () => {
   chatInput.style.height = Math.min(chatInput.scrollHeight, 150) + 'px';
 });
 
+ctxNoWebsite.addEventListener('change', () => {
+  const disabled = ctxNoWebsite.checked;
+  ctxWebsite.disabled = disabled;
+  ctxLinkedin.disabled = disabled;
+  if (disabled) {
+    ctxWebsite.value = '';
+    ctxLinkedin.value = '';
+  }
+});
+
+btnUseContext.addEventListener('click', () => {
+  handleContextIngestion();
+});
+
+navContextSummary.addEventListener('click', () => {
+  if (rightPanelView === 'context') {
+    setRightPanelView('brandscript');
+  } else {
+    openContextSummaryPanel();
+  }
+});
+
 // Reset
 btnReset.addEventListener('click', () => {
   if (confirm('Are you sure you want to reset? All progress will be lost.')) {
     clearSession();
+    clearCollectedContext();
     chatMessages.innerHTML = '';
     refreshUI();
     showWelcome();
