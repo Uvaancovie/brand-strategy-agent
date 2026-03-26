@@ -6,18 +6,11 @@
 // ===================================================================
 
 import './style.css';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 
-// ─── GEMINI SETUP ───────────────────────────────────────────────────
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(API_KEY);
-const model = genAI.getGenerativeModel({
-  model: 'gemini-2.0-flash',
-  systemInstruction: {
-    role: 'model',
-    parts: [{ text: '' }],  // will be set via system prompt below
-  },
-});
+// ─── GROQ SETUP ─────────────────────────────────────────────────────
+const API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const groq = new Groq({ apiKey: API_KEY, dangerouslyAllowBrowser: true });
 
 // ─── FRAMEWORK DEFINITION ───────────────────────────────────────────
 const FRAMEWORK = [
@@ -378,10 +371,10 @@ function removeTyping() {
   if (el) el.remove();
 }
 
-// ─── GEMINI API CALL ────────────────────────────────────────────────
+// ─── GROQ API CALL ────────────────────────────────────────────────
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-async function callGemini(userText, retries = 2) {
+async function callGroq(userText, retries = 2) {
   // Build current brandscript status to inject as context
   const bsStatus = FRAMEWORK.map(section => {
     const fields = section.fields.map(field => {
@@ -393,28 +386,27 @@ async function callGemini(userText, retries = 2) {
 
   const contextInjection = `\n\n---\n## CURRENT BRANDSCRIPT STATUS (use this to know what's filled and what needs extracting):\n${bsStatus}\n---\n`;
 
-  // systemInstruction MUST be on the model, not startChat — rebuild model per call
-  const chatModel = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    systemInstruction: SYSTEM_PROMPT + contextInjection,
-  });
-
-  // Build prior history (exclude the current message — passed via sendMessage)
-  const history = state.conversationHistory.map(m => ({
-    role: m.role === 'agent' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const chat = chatModel.startChat({ history });
+  // Build prior history 
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT + contextInjection },
+    ...state.conversationHistory.map(m => ({
+      role: m.role === 'agent' ? 'assistant' : 'user',
+      content: m.content,
+    })),
+    { role: 'user', content: userText }
+  ];
 
   try {
-    const result = await chat.sendMessage(userText);
-    return result.response.text();
+    const chatCompletion = await groq.chat.completions.create({
+      messages,
+      model: 'llama-3.3-70b-versatile',
+    });
+    return chatCompletion.choices[0]?.message?.content || "";
   } catch (err) {
     if (retries > 0 && err.message && (err.message.includes('quota') || err.message.includes('429'))) {
       console.warn(`Rate limit hit. Retrying... (${retries} attempts left)`);
       await delay(2500); // Wait 2.5 seconds before retrying
-      return callGemini(userText, retries - 1);
+      return callGroq(userText, retries - 1);
     }
     throw err;
   }
@@ -453,7 +445,7 @@ async function handleUserInput(text) {
   showTyping();
 
   try {
-    const responseText = await callGemini(text);
+    const responseText = await callGroq(text);
 
     removeTyping();
 
@@ -475,7 +467,7 @@ async function handleUserInput(text) {
 
   } catch (err) {
     removeTyping();
-    console.error('Gemini API error:', err);
+    console.error('Groq API error:', err);
 
     let errContent = `⚠️ **AI Error**\n\n`;
     if (err.message && err.message.includes('API_KEY')) {
@@ -969,12 +961,19 @@ function stopWaveform() {
 // Start recording
 async function startRecording() {
   try {
-    // Request basic microphone access (simplifying params often helps with Speech Recognition reliability)
+    // Request microphone access
     audioState.stream = await navigator.mediaDevices.getUserMedia({ 
       audio: true 
     });
 
-    // Note: We don't use MediaRecorder because it can sometimes conflict with SpeechRecognition on the same stream
+    audioState.audioChunks = [];
+    audioState.mediaRecorder = new MediaRecorder(audioState.stream);
+    audioState.mediaRecorder.ondataavailable = event => {
+      if (event.data.size > 0) {
+        audioState.audioChunks.push(event.data);
+      }
+    };
+    audioState.mediaRecorder.start();
 
     // Set up Web Audio API for visualization
     audioState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -984,71 +983,12 @@ async function startRecording() {
     audioState.analyser.smoothingTimeConstant = 0.85;
     source.connect(audioState.analyser);
 
-    // Set up Speech Recognition for live transcription
-    audioState.transcribedText = '';
-    audioState.interimText = '';
-
-    if (SpeechRecognition) {
-      audioState.recognition = new SpeechRecognition();
-      audioState.recognition.continuous = true;
-      audioState.recognition.interimResults = true;
-      audioState.recognition.lang = 'en-US';
-      audioState.recognition.maxAlternatives = 1;
-
-      audioState.recognition.onresult = (event) => {
-        let interim = '';
-        let final = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            final += transcript + ' ';
-          } else {
-            interim += transcript;
-          }
-        }
-        if (final) {
-          audioState.transcribedText += final;
-        }
-        audioState.interimText = interim;
-
-        // Update live text display
-        const displayText = audioState.transcribedText + (interim ? `<span style="color: var(--text-muted)">${interim}</span>` : '');
-        if (recordingLiveText) {
-          recordingLiveText.innerHTML = displayText || '';
-          recordingLiveText.scrollTop = recordingLiveText.scrollHeight;
-        }
-      };
-
-      audioState.recognition.onerror = (event) => {
-        console.warn('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-          stopRecording(false);
-          alert('Microphone access for speech recognition was denied.');
-        }
-      };
-
-      audioState.recognition.onend = () => {
-        // Restart gracefully if still recording
-        if (audioState.isRecording) {
-          setTimeout(() => {
-            if (audioState.isRecording) {
-              try { audioState.recognition.start(); } catch(e) {}
-            }
-          }, 300);
-        }
-      };
-
-      // Set recording flag early so onend restart works correctly
-      audioState.isRecording = true;
-      audioState.recognition.start();
-    } else {
-      audioState.isRecording = true;
-    }
+    audioState.isRecording = true;
 
     // Update UI
     btnMic.classList.add('recording');
     recordingOverlay.classList.add('active');
-    if (recordingLiveText) recordingLiveText.innerHTML = '';
+    if (recordingLiveText) recordingLiveText.innerHTML = '<span style="color: var(--text-muted)">Recording audio...</span>';
     
     startTimer();
     drawWaveform();
@@ -1070,16 +1010,66 @@ async function stopRecording(sendTranscription = true) {
   
   audioState.isRecording = false;
 
-  // Stop speech recognition
-  if (audioState.recognition) {
-    audioState.recognition.stop();
-    audioState.recognition = null;
-  }
+  const processAudio = sendTranscription;
 
-  // Stop audio stream
-  if (audioState.stream) {
-    audioState.stream.getTracks().forEach(track => track.stop());
-    audioState.stream = null;
+  if (audioState.mediaRecorder) {
+    audioState.mediaRecorder.onstop = async () => {
+      // Stop audio stream after recording stops
+      if (audioState.stream) {
+        audioState.stream.getTracks().forEach(track => track.stop());
+        audioState.stream = null;
+      }
+
+      if (processAudio) {
+        if (recordingLiveText) recordingLiveText.innerHTML = '<span style="color: var(--text-muted)">Transcribing with Whisper (Groq)...</span>';
+        
+        try {
+          const audioBlob = new Blob(audioState.audioChunks, { type: 'audio/webm' });
+          const file = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
+          
+          const transcription = await groq.audio.transcriptions.create({
+            file: file,
+            model: "whisper-large-v3-turbo",
+            temperature: 0,
+            response_format: "json",
+          });
+
+          const fullText = (transcription.text || "").trim();
+          
+          if (fullText) {
+            const labeledText = `🎙️ [Audio Recording]\n\n${fullText}`;
+            handleUserInput(labeledText);
+          } else {
+            const noTextMsg = {
+              role: 'agent',
+              content: `🎙️ **Recording Complete** — but I couldn't detect any speech. Try again.`,
+            };
+            state.messages.push(noTextMsg);
+            renderMessage(noTextMsg);
+          }
+        } catch (e) {
+          console.error("Transcription error:", e);
+          const errTextMsg = {
+            role: 'agent',
+            content: `🎙️ **Transcription Failed** — ${e.message}`,
+          };
+          state.messages.push(errTextMsg);
+          renderMessage(errTextMsg);
+        }
+      }
+
+      // Final UI cleanup
+      btnMic.classList.remove('recording');
+      recordingOverlay.classList.remove('active');
+      recordingTimer.textContent = '00:00';
+      if (recordingLiveText) recordingLiveText.innerHTML = '';
+    };
+
+    audioState.mediaRecorder.stop();
+  } else {
+    // If no media recorder (e.g. cancelled early)
+    btnMic.classList.remove('recording');
+    recordingOverlay.classList.remove('active');
   }
 
   // Close audio context
@@ -1092,31 +1082,6 @@ async function stopRecording(sendTranscription = true) {
   // Stop timer and waveform
   stopTimer();
   stopWaveform();
-
-  // Update UI
-  btnMic.classList.remove('recording');
-  recordingOverlay.classList.remove('active');
-  recordingTimer.textContent = '00:00';
-  if (recordingLiveText) recordingLiveText.innerHTML = '';
-
-  // Process transcription
-  if (sendTranscription) {
-    const fullText = (audioState.transcribedText + audioState.interimText).trim();
-    
-    if (fullText) {
-      // Send transcribed text as user input with a label
-      const labeledText = `🎙️ [Audio Recording]\n\n${fullText}`;
-      handleUserInput(labeledText);
-    } else {
-      // No transcription detected
-      const noTextMsg = {
-        role: 'agent',
-        content: `🎙️ **Recording Complete** — but I couldn't detect any speech.\n\nThis could happen if:\n- The microphone volume was too low\n- There was too much background noise\n- Speech Recognition isn't supported in your browser\n\nTry again, or type/paste your content directly.`,
-      };
-      state.messages.push(noTextMsg);
-      renderMessage(noTextMsg);
-    }
-  }
 }
 
 // Cancel recording
