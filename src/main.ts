@@ -21,6 +21,8 @@ import { startRecording, stopRecording, processAudioFile, audioState } from './s
 import { scrapeContextSources } from './services/scrape.service';
 import { supabase, getCurrentSession, setupAuthListener } from './services/supabase.service';
 import { getProfile, upsertProfile, uploadAvatar, logActivity, getActivity, getActivityStats } from './services/profile.service';
+import { generateMarketData } from './services/market.service';
+import { generateBigDocPdf } from './services/pdf.service';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl;
@@ -38,7 +40,7 @@ const chatMessages = document.getElementById('chat-messages')!;
 const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement;
 const btnSend = document.getElementById('btn-send')!;
 const btnReset = document.getElementById('btn-reset')!;
-const btnExport = document.getElementById('btn-export')!;
+const btnDownloadPdf = document.getElementById('btn-download-pdf') as HTMLButtonElement;
 const sectionNav = document.getElementById('section-nav')!;
 const brandscriptContent = document.getElementById('brandscript-content')!;
 const progressFill = document.getElementById('progress-fill')!;
@@ -189,8 +191,8 @@ function startInterviewFlow(startSectionIndex = 0): void {
         } else {
           addSystemMessage({
             role: 'agent',
-            content: `🎉 **All 8 sections complete!**\n\nYour B.I.G Doc is ready. Click **Export B.I.G Doc** to download it as a Markdown file, or click ✨ **Refine** on any section to have me polish the content with AI.`,
-            quickActions: ['📄 Export B.I.G Doc', '✨ Refine with AI'],
+            content: `🎉 **All 8 sections complete!**\n\nYour B.I.G Doc is ready. Click **📥 PDF + Market Data** to download your complete strategy, or click ✨ **Refine** on any section to have me polish the content with AI.`,
+            quickActions: ['📥 Download PDF', '✨ Refine with AI'],
           });
         }
       },
@@ -225,8 +227,8 @@ async function handleUserInput(text: string): Promise<void> {
       return;
     }
   }
-  if (lower.includes('export b.i.g doc')) {
-    btnExport.click();
+  if (lower.includes('download pdf')) {
+    btnDownloadPdf.click();
     return;
   }
   if (lower.includes('refine with ai') || lower.includes('refine')) {
@@ -670,34 +672,68 @@ btnReset.addEventListener('click', () => {
   }
 });
 
-// ─── EXPORT B.I.G DOC ──────────────────────────────────────────────
+// ─── DOWNLOAD B.I.G DOC PDF ─────────────────────────────────────────
 
-btnExport.addEventListener('click', () => {
-  let md = '# 🌋 Brand Identity Guiding Document (B.I.G Doc)\n';
-  md += `## VMV8 — Voice Matrix V8 Brand Strategy Framework\n\n`;
-  md += `*Generated on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}*\n`;
-  md += `*Powered by Brandy — VMV8 Brand Strategy Agent*\n\n---\n\n`;
+btnDownloadPdf.addEventListener('click', async () => {
+  // Disable button and show generating state
+  btnDownloadPdf.disabled = true;
+  const originalLabel = btnDownloadPdf.innerHTML;
+  btnDownloadPdf.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    Generating market data...`;
 
-  FRAMEWORK.forEach(section => {
-    md += `## ${section.icon} ${section.label.toUpperCase()}\n\n`;
-    section.fields.forEach(field => {
-      const value = state.brandscript[section.id][field.id];
-      md += `### ${field.label}\n`;
-      md += `> *${field.description}*\n\n`;
-      md += value ? `${value}\n\n` : `*Not yet defined*\n\n`;
+  // Show processing overlay
+  processingTitle.textContent = 'Generating Market Intelligence';
+  processingSubtitle.textContent = 'Analyzing your brand data with AI...';
+  processingProgressBar.style.width = '20%';
+  processingOverlay.classList.remove('hidden');
+
+  try {
+    // 1. Generate market data with AI
+    const marketData = await generateMarketData(collectedContextPayload);
+
+    // Update overlay
+    processingTitle.textContent = 'Building Your PDF';
+    processingSubtitle.textContent = 'Assembling B.I.G Doc with market intelligence...';
+    processingProgressBar.style.width = '70%';
+
+    // Small delay so the user sees the progress update
+    await new Promise(r => setTimeout(r, 600));
+
+    // 2. Generate and download the PDF
+    generateBigDocPdf({
+      brandscript: state.brandscript,
+      contextPayload: collectedContextPayload,
+      marketData,
     });
-    md += '---\n\n';
-  });
 
-  md += `\n## About This Document\nThis B.I.G Doc was generated using the VMV8 (Voice Matrix V8) framework by Volcanic Marketing.\n`;
+    processingProgressBar.style.width = '100%';
 
-  const blob = new Blob([md], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'BIG-Doc-Brand-Identity-Guide.md';
-  a.click();
-  URL.revokeObjectURL(url);
+    addSystemMessage({
+      role: 'agent',
+      content: '📥 **B.I.G Doc PDF downloaded!** Your document includes your brand strategy framework and AI-generated market intelligence.',
+    });
+
+    // Log activity
+    if (currentUserId) {
+      logActivity(currentUserId, 'pdf_upload', 'B.I.G Doc PDF exported', 'PDF with market data');
+    }
+
+  } catch (err) {
+    console.error('PDF generation error:', err);
+    addSystemMessage({
+      role: 'agent',
+      content: `⚠️ **PDF Generation Failed**\n\n${(err as Error).message || 'Something went wrong. Please try again.'}`,
+    });
+  } finally {
+    // Reset button and hide overlay
+    setTimeout(() => {
+      processingOverlay.classList.add('hidden');
+      processingProgressBar.style.width = '0%';
+    }, 800);
+    btnDownloadPdf.disabled = false;
+    btnDownloadPdf.innerHTML = originalLabel;
+  }
 });
 
 // ─── TRANSCRIPTION MODAL ────────────────────────────────────────────

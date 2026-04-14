@@ -196,6 +196,31 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 4px 20px rgba(255,107,53,0.3);
 }
+.btn-pdf-download {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, #7C6BFF 0%, #F7C948 100%);
+  color: #0a0a0f;
+  font-size: 0.8rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.btn-pdf-download:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(124,107,255,0.35);
+}
+.btn-pdf-download:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
 .btn-icon {
   display: flex; align-items: center; justify-content: center;
   width: 34px; height: 34px;
