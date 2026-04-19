@@ -245,13 +245,15 @@ async function handleUserInput(text: string): Promise<void> {
     }
   }
 
-  const userMsg = { role: 'user' as const, content: text };
+  const isTranscription = text.includes('📁 [Audio File') || text.includes('🎙️ [Audio Recording') || text.includes('🎙️ **');
+  const userMsg = { role: 'user' as const, content: isTranscription ? text.replace(/\n\n\[SYSTEM:.*\]$/g, '') : text };
+  
   state.messages.push(userMsg);
-  state.conversationHistory.push(userMsg);
+  state.conversationHistory.push({ role: 'user', content: text }); // text includes system prompt
   renderMessage(chatMessages, userMsg, handleUserInput);
 
   // Log prompt activity
-  if (currentUserId) {
+  if (currentUserId && !isTranscription) {
     logActivity(currentUserId, 'prompt', text.slice(0, 120), `${text.length} chars`);
   }
 
@@ -763,13 +765,16 @@ function submitTranscription() {
   let finalText = pendingTranscriptText;
   if (name) finalText = `🎙️ **${name}**${desc ? `\n> ${desc}` : ''}\n\n${pendingTranscriptText}`;
   transcriptionModal.classList.add('hidden');
-  handleUserInput(finalText);
+  
+  const instruction = '\n\n[SYSTEM: Review the preceding transcript. If it contains new business logic, please aggressively update ALL applicable framework input boxes in the B.I.G Doc that we have not yet established or that need revision. Extract and return these updates.]';
+  handleUserInput(finalText + instruction);
 }
 
 modalSave.addEventListener('click', submitTranscription);
 modalSkip.addEventListener('click', () => {
   transcriptionModal.classList.add('hidden');
-  handleUserInput(pendingTranscriptText);
+  const instruction = '\n\n[SYSTEM: Review the preceding transcript. If it contains new business logic, please aggressively update ALL applicable framework input boxes in the B.I.G Doc that we have not yet established or that need revision. Extract and return these updates.]';
+  handleUserInput(pendingTranscriptText + instruction);
 });
 modalClose.addEventListener('click', () => transcriptionModal.classList.add('hidden'));
 
@@ -1108,10 +1113,31 @@ async function openProfilePage() {
   setAvatarUI(profile?.avatar_url || null, initials);
 
   // Stats
-  document.getElementById('stat-prompts')!.textContent = String(stats.prompts);
-  document.getElementById('stat-transcriptions')!.textContent = String(stats.transcriptions);
-  document.getElementById('stat-files')!.textContent = String(stats.fileUploads + stats.pdfUploads);
-  document.getElementById('stat-logins')!.textContent = String(stats.logins);
+  const limitBytes = profile?.storage_limit_bytes || (500 * 1024 * 1024);
+  const usedBytes = stats.storageUsedBytes || 0;
+  const storagePct = Math.min(100, Math.round((usedBytes / limitBytes) * 100));
+  
+  const pctEl = document.getElementById('stat-storage-pct');
+  if (pctEl) pctEl.textContent = `${storagePct}%`;
+  
+  const barEl = document.getElementById('stat-storage-bar');
+  if (barEl) barEl.style.width = `${storagePct}%`;
+  
+  const usedEl = document.getElementById('stat-storage-used');
+  if (usedEl) usedEl.textContent = `${(usedBytes / (1024*1024)).toFixed(1)} MB`;
+  
+  const limitEl = document.getElementById('stat-storage-limit');
+  if (limitEl) limitEl.textContent = `${(limitBytes / (1024*1024)).toFixed(0)} MB limit`;
+  
+  const transLimit = profile?.transcriptions_limit || 50;
+  const tLeftEl = document.getElementById('stat-transcriptions-left');
+  if (tLeftEl) tLeftEl.textContent = String(Math.max(0, transLimit - stats.transcriptions));
+  
+  const promptEl = document.getElementById('stat-prompts');
+  if (promptEl) promptEl.textContent = String(stats.prompts);
+  
+  const loginEl = document.getElementById('stat-logins');
+  if (loginEl) loginEl.textContent = String(stats.logins);
 
   // Activity feed
   renderActivityFeed(activities);

@@ -11,6 +11,8 @@ export interface UserProfile {
   avatar_url: string | null;
   created_at: string;
   updated_at: string;
+  storage_limit_bytes: number;
+  transcriptions_limit: number;
 }
 
 export interface ActivityEntry {
@@ -111,12 +113,19 @@ export async function getActivityStats(userId: string): Promise<{
   pdfUploads: number;
   logins: number;
   totalActivity: number;
+  storageUsedBytes: number;
 }> {
   const { data, error } = await supabase
     .from('vmv8_activity')
-    .select('type')
+    .select('type, file_size_bytes')
     .eq('user_id', userId);
-  if (error || !data) return { prompts: 0, transcriptions: 0, fileUploads: 0, pdfUploads: 0, logins: 0, totalActivity: 0 };
+  if (error || !data) return { prompts: 0, transcriptions: 0, fileUploads: 0, pdfUploads: 0, logins: 0, totalActivity: 0, storageUsedBytes: 0 };
+  
+  let storageSum = 0;
+  data.forEach(r => {
+    if (r.file_size_bytes) storageSum += r.file_size_bytes;
+  });
+
   return {
     prompts: data.filter(r => r.type === 'prompt').length,
     transcriptions: data.filter(r => r.type === 'transcription').length,
