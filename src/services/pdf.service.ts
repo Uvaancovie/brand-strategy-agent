@@ -741,7 +741,7 @@ export interface PdfOptions {
 export function generateBigDocPdf(options: PdfOptions): void {
   const { brandscript, contextPayload, marketData, brandName, tagline } = options;
 
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
 
   const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const resolvedBrandName = brandName || brandscript.name?.purpose?.split('.')[0]?.trim() || 'Your Brand';
