@@ -8,18 +8,18 @@ import autoTable from 'jspdf-autotable';
 import { FRAMEWORK, type BrandScript } from '../config/framework';
 import type { MarketData } from './market.service';
 
-// ─── COLOUR PALETTE (Black & Orange) ────────────────────────────────
+// ─── COLOUR PALETTE (Elegant Black & White) ───────────────────────────
 const C = {
-  orange:      [255, 107, 53]  as [number, number, number],
-  orangeDark:  [204,  78, 28]  as [number, number, number],
-  orangeLight: [255, 140, 97]  as [number, number, number],
-  black:       [10,  10,  15]  as [number, number, number],
-  darkGray:    [22,  22,  31]  as [number, number, number],
-  midGray:     [40,  40,  50]  as [number, number, number],
-  lightGray:   [60,  60,  72]  as [number, number, number],
-  white:       [255, 255, 255] as [number, number, number],
-  textLight:   [230, 230, 235] as [number, number, number],
-  textMuted:   [150, 150, 165] as [number, number, number],
+  orange:      [0, 0, 0]  as [number, number, number],      // Primary Black
+  orangeDark:  [30, 30, 30]  as [number, number, number],   // Dark Gray
+  orangeLight: [120, 120, 120]  as [number, number, number],// Mid Gray
+  black:       [255, 255, 255]  as [number, number, number],// Page Background (White)
+  darkGray:    [245, 245, 245]  as [number, number, number],// Very Light Gray for tables
+  midGray:     [220, 220, 220]  as [number, number, number],// Borders
+  lightGray:   [100, 100, 100]  as [number, number, number],
+  white:       [0, 0, 0] as [number, number, number],       // Strong Text (Black)
+  textLight:   [20, 20, 20] as [number, number, number],    // Standard Text
+  textMuted:   [90, 90, 90] as [number, number, number],    // Muted guidelines
 };
 
 const PAGE_W = 210;
@@ -115,14 +115,14 @@ function safeY(doc: jsPDF, y: number, needed: number): number {
 
 function orangeRule(doc: jsPDF, y: number, width?: number): number {
   doc.setDrawColor(...C.orange);
-  doc.setLineWidth(0.8);
+  doc.setLineWidth(0.4);
   doc.line(MARGIN, y, MARGIN + (width || CONTENT_W), y);
   return y + 5;
 }
 
 function thinRule(doc: jsPDF, y: number): number {
   doc.setDrawColor(...C.midGray);
-  doc.setLineWidth(0.3);
+  doc.setLineWidth(0.2);
   doc.line(MARGIN, y, MARGIN + CONTENT_W, y);
   return y + 4;
 }
@@ -130,7 +130,7 @@ function thinRule(doc: jsPDF, y: number): number {
 function sectionTitle(doc: jsPDF, y: number, title: string, icon?: string): number {
   y = safeY(doc, y, 20);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
+  doc.setFontSize(16);
   doc.setTextColor(...C.orange);
   const label = icon ? `${icon}  ${title}` : title;
   doc.text(label, MARGIN, y);
@@ -140,21 +140,24 @@ function sectionTitle(doc: jsPDF, y: number, title: string, icon?: string): numb
 
 function subHeading(doc: jsPDF, y: number, title: string): number {
   y = safeY(doc, y, 14);
-  // Orange bullet
+  // Black bullet
   doc.setFillColor(...C.orange);
   doc.rect(MARGIN, y - 3, 2.5, 2.5, 'F');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10);
   doc.setTextColor(...C.orange);
   doc.text(title, MARGIN + 6, y);
   return y + 6;
 }
 
-function bodyText(doc: jsPDF, text: string, y: number, opts?: { muted?: boolean; italic?: boolean; fontSize?: number; maxWidth?: number }): number {
+function bodyText(doc: jsPDF, text: string, y: number, opts?: { muted?: boolean; italic?: boolean; bold?: boolean; fontSize?: number; maxWidth?: number }): number {
   const cleaned = strip(text);
   const fs = opts?.fontSize || 9;
   const mw = opts?.maxWidth || CONTENT_W;
-  doc.setFont('helvetica', opts?.italic ? 'italic' : 'normal');
+  let fontStyle = 'normal';
+  if (opts?.bold) fontStyle = 'bold';
+  else if (opts?.italic) fontStyle = 'italic';
+  doc.setFont('helvetica', fontStyle);
   doc.setFontSize(fs);
   doc.setTextColor(...(opts?.muted ? C.textMuted : C.textLight));
   const lines = doc.splitTextToSize(cleaned, mw);
@@ -169,14 +172,14 @@ function bodyText(doc: jsPDF, text: string, y: number, opts?: { muted?: boolean;
 
 function addFooter(doc: jsPDF, pageNum: number, totalPages: number): void {
   const y = PAGE_H - 10;
-  doc.setDrawColor(...C.orange);
+  doc.setDrawColor(...C.midGray);
   doc.setLineWidth(0.3);
   doc.line(MARGIN, y - 4, PAGE_W - MARGIN, y - 4);
   doc.setFontSize(7);
   doc.setTextColor(...C.textMuted);
   doc.text('VMV8 — Brand Identity Guiding Document', MARGIN, y);
   doc.text(`Page ${pageNum} of ${totalPages}`, PAGE_W - MARGIN, y, { align: 'right' });
-  doc.setTextColor(...C.orange);
+  doc.setTextColor(...C.textMuted);
   doc.text('Powered by Volcanic Marketing', PAGE_W / 2, y, { align: 'center' });
 }
 
@@ -184,73 +187,88 @@ function addFooter(doc: jsPDF, pageNum: number, totalPages: number): void {
 
 function drawCover(doc: jsPDF, brandName: string, tagline: string, date: string): void {
   darkBg(doc);
-  // Top bar
-  doc.setFillColor(...C.orange);
-  doc.rect(0, 0, PAGE_W, 4, 'F');
-
   const cx = PAGE_W / 2;
 
-  // Hexagon
-  const cy = 85, size = 22;
-  doc.setFillColor(...C.orange);
-  const pts: number[][] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 3) * i - Math.PI / 2;
-    pts.push([cx + size * Math.cos(a), cy + size * Math.sin(a)]);
-  }
-  for (let i = 1; i < 5; i++) doc.triangle(pts[0][0], pts[0][1], pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 'F');
-  const inner = 13;
-  doc.setFillColor(...C.black);
-  const inn: number[][] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 3) * i - Math.PI / 2;
-    inn.push([cx + inner * Math.cos(a), cy + inner * Math.sin(a)]);
-  }
-  for (let i = 1; i < 5; i++) doc.triangle(inn[0][0], inn[0][1], inn[i][0], inn[i][1], inn[i + 1][0], inn[i + 1][1], 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(...C.orange);
-  doc.text('VMV8', cx, cy + 3.5, { align: 'center' });
-
-  // Title
-  doc.setFontSize(30);
-  doc.setTextColor(...C.white);
-  doc.text('Brand Identity', cx, 130, { align: 'center' });
-  doc.text('Guiding Document', cx, 143, { align: 'center' });
+  // Diamond Logo
+  const cyLogo = 40, size = 15;
   doc.setDrawColor(...C.orange);
-  doc.setLineWidth(1);
-  doc.line(cx - 45, 149, cx + 45, 149);
+  doc.setLineWidth(0.5);
+  doc.line(cx, cyLogo - size, cx + size, cyLogo);
+  doc.line(cx + size, cyLogo, cx, cyLogo + size);
+  doc.line(cx, cyLogo + size, cx - size, cyLogo);
+  doc.line(cx - size, cyLogo, cx, cyLogo - size);
+  doc.line(cx, cyLogo - size, cx, cyLogo + size);
+  doc.line(cx, cyLogo + size * 0.3, cx + size * 0.5, cyLogo - size * 0.2);
+  doc.line(cx, cyLogo + size * 0.3, cx - size * 0.5, cyLogo - size * 0.2);
 
-  // Brand name
-  if (brandName) {
-    doc.setFontSize(18);
-    doc.setTextColor(...C.orange);
-    doc.text(brandName, cx, 165, { align: 'center' });
-  }
-  if (tagline) {
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(11);
+  // Logo Text
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...C.white); // Prints black now
+  doc.text('V O L C A N I C   M A R K E T I N G', cx, cyLogo + 24, { align: 'center' });
+  doc.setFont('times', 'italic');
+  doc.setFontSize(11);
+  doc.text('extraordinary by design', cx, cyLogo + 30, { align: 'center' });
+
+  // Main Title
+  doc.setFont('times', 'normal');
+  doc.setFontSize(26);
+  doc.setTextColor(...C.orangeDark);
+  doc.text('BRAND', cx, cyLogo + 52, { align: 'center' });
+  doc.text('STRATEGY', cx, cyLogo + 64, { align: 'center' });
+
+  // Box with 8 Sections
+  const boxTop = cyLogo + 82;
+  const boxWidth = 100;
+  const boxLeft = cx - boxWidth / 2;
+  const boxHeight = 135;
+  
+  doc.setDrawColor(...C.textMuted);
+  doc.setLineWidth(0.2);
+  doc.rect(boxLeft, boxTop, boxWidth, boxHeight);
+
+  const sectionsContent = [
+    { title: 'NAME', sub: 'Purpose, Origin Story, Tagline, Slogan' },
+    { title: 'CHARACTER', sub: 'Charity, Cause, Conviction, Values' },
+    { title: 'INTENT', sub: 'Vision, Mission, Message' },
+    { title: 'VOICE', sub: 'Archetype, Tone, Topics of Authority' },
+    { title: 'CREATION', sub: 'Product, Service, Superpower' },
+    { title: 'OPERATION', sub: 'Tools, Processes, Systems, Logistics' },
+    { title: 'IMAGE', sub: 'Logo, Fonts, Colour Palette' },
+    { title: 'ADMINISTRATION', sub: 'Policies, Procedures, Legal, Finance' },
+  ];
+
+  let textY = boxTop + 10;
+  for (const item of sectionsContent) {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...C.orangeDark);
+    doc.text(item.title, cx, textY, { align: 'center' });
+    textY += 4.5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
     doc.setTextColor(...C.textMuted);
-    doc.text(`"${tagline}"`, cx, 178, { align: 'center' });
+    doc.text(item.sub, cx, textY, { align: 'center' });
+    textY += 12;
   }
 
-  // The 8 sections
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(...C.textMuted);
-  const sections = FRAMEWORK.map(s => `${s.icon} ${s.label}`).join('   •   ');
-  doc.text(sections, cx, 198, { align: 'center' });
+  // Footer "PLAN" button and wavy mock lines
+  const bottomCy = PAGE_H - 18;
+  
+  // A few contour lines mock
+  doc.setDrawColor(...C.midGray);
+  doc.setLineWidth(0.2);
+  for(let i = 0; i < 4; i++) {
+    doc.line(0, bottomCy - 4 + i*4, PAGE_W, bottomCy - 2 + i*5);
+  }
 
-  // Footer
-  doc.setFontSize(9);
-  doc.setTextColor(...C.orangeLight);
-  doc.text('Powered by Volcanic Marketing · VMV8 Framework', cx, PAGE_H - 35, { align: 'center' });
-  doc.setTextColor(...C.textMuted);
-  doc.setFontSize(8);
-  doc.text(date, cx, PAGE_H - 27, { align: 'center' });
-
-  doc.setFillColor(...C.orange);
-  doc.rect(0, PAGE_H - 4, PAGE_W, 4, 'F');
+  // Plan Button
+  doc.setFillColor(...C.white); // Black fill
+  doc.setTextColor(...C.black); // White text
+  doc.roundedRect(cx - 15, bottomCy - 5, 30, 10, 5, 5, 'F');
+  doc.setFont('times', 'normal');
+  doc.setFontSize(10);
+  doc.text('PLAN', cx, bottomCy + 1.5, { align: 'center' });
 }
 
 // ─── TABLE OF CONTENTS ──────────────────────────────────────────────
@@ -335,31 +353,202 @@ function drawContext(doc: jsPDF, contextPayload: string): void {
 
 // ─── MARKET DATA SECTIONS ───────────────────────────────────────────
 
-function drawMarketSections(doc: jsPDF, marketData: MarketData): void {
-  const sections: { title: string; content: string }[] = [
-    { title: 'INDUSTRY OVERVIEW', content: marketData.industryOverview },
-    { title: 'MARKET SIZING — TAM / SAM / SOM', content: marketData.marketSizing },
-    { title: 'TARGET MARKET SEGMENTATION', content: marketData.targetMarketSegmentation },
-    { title: 'COMPETITIVE POSITIONING', content: marketData.competitivePositioning },
-    { title: 'SWOT ANALYSIS', content: marketData.swotAnalysis },
-  ];
+// Helper to draw metrics boxes
+function drawMetricBoxes(doc: jsPDF, y: number, metrics: { label: string; value: string }[]): number {
+  if (!metrics || metrics.length === 0) return y;
+  const count = metrics.length;
+  const spacing = 4;
+  const boxW = (CONTENT_W - (spacing * (count - 1))) / count;
+  let boxX = MARGIN;
+  
+  for (const m of metrics) {
+    doc.setFillColor(...C.darkGray);
+    doc.roundedRect(boxX, y + 2, boxW, 16, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...C.textMuted);
+    doc.text(m.label.toUpperCase(), boxX + boxW/2, y + 7, { align: 'center' });
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...C.white); // prints strong black
+    doc.text(m.value, boxX + boxW/2, y + 13.5, { align: 'center' });
+    boxX += boxW + spacing;
+  }
+  return y + 22;
+}
 
-  for (const section of sections) {
-    let y = newPage(doc);
-    y = sectionTitle(doc, y, section.title);
-    y += 2;
-    y = bodyText(doc, section.content, y);
+function drawMarketSections(doc: jsPDF, marketData: MarketData): void {
+  // 1. Industry Overview
+  let y = newPage(doc);
+  y = sectionTitle(doc, y, 'INDUSTRY OVERVIEW');
+  y += 2;
+  y = drawMetricBoxes(doc, y, marketData.industryOverview.metrics);
+  y += 4;
+  y = bodyText(doc, marketData.industryOverview.narrative, y);
+
+  // 2. Market Sizing (TAM/SAM/SOM Infographic map)
+  y = newPage(doc);
+  y = sectionTitle(doc, y, 'MARKET SIZING — TAM / SAM / SOM');
+  y += 4;
+  
+  const colW = (CONTENT_W - 8) / 3;
+  const cols = [
+    { t: 'TAM', obj: marketData.marketSizing.tam },
+    { t: 'SAM', obj: marketData.marketSizing.sam },
+    { t: 'SOM', obj: marketData.marketSizing.som }
+  ];
+  let cx = MARGIN;
+  doc.setDrawColor(...C.midGray);
+  doc.setLineWidth(0.2);
+  for(const c of cols) {
+    // Draw Box
+    doc.roundedRect(cx, y, colW, 36, 2, 2);
+    // Draw Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.setTextColor(...C.textMuted);
+    doc.text(c.t, cx + colW/2, y + 8, { align: 'center' });
+    // Draw Value
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...C.white); // Prints black in this theme
+    doc.text(c.obj.value, cx + colW/2, y + 15, { align: 'center' });
+    // Draw Description
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...C.textMuted);
+    const lines = doc.splitTextToSize(c.obj.description, colW - 6);
+    doc.text(lines.slice(0,4), cx + colW/2, y + 21, { align: 'center', lineHeightFactor: 1.2 });
+    cx += colW + 4;
+  }
+  y += 42;
+  y = subHeading(doc, y, 'Penetration & Est. Growth');
+  y = bodyText(doc, `Estimated CAGR/Growth Factor: ${marketData.marketSizing.growth_cagr}`, y, { bold: true });
+  y += 2;
+  y = bodyText(doc, marketData.marketSizing.narrative, y);
+
+  // 3. Target Market Segmentation
+  y = newPage(doc);
+  y = sectionTitle(doc, y, 'TARGET MARKET SEGMENTATION');
+  y += 2;
+  y = drawMetricBoxes(doc, y, marketData.targetMarketSegmentation.metrics);
+  y += 6;
+  
+  y = subHeading(doc, y, 'Primary Segment: ' + marketData.targetMarketSegmentation.primary.name);
+  y = bodyText(doc, marketData.targetMarketSegmentation.primary.description, y);
+  y += 2;
+  y = bodyText(doc, `Demographics: ${marketData.targetMarketSegmentation.primary.demographics}`, y, { muted: true, italic: true });
+  y = bodyText(doc, `Psychographics: ${marketData.targetMarketSegmentation.primary.psychographics}`, y, { muted: true, italic: true });
+  y += 8;
+  
+  y = subHeading(doc, y, 'Secondary Segment: ' + marketData.targetMarketSegmentation.secondary.name);
+  y = bodyText(doc, marketData.targetMarketSegmentation.secondary.description, y);
+  y += 2;
+  y = bodyText(doc, `Demographics: ${marketData.targetMarketSegmentation.secondary.demographics}`, y, { muted: true, italic: true });
+  y = bodyText(doc, `Psychographics: ${marketData.targetMarketSegmentation.secondary.psychographics}`, y, { muted: true, italic: true });
+
+  // 4. Competitive Positioning
+  y = newPage(doc);
+  y = sectionTitle(doc, y, 'COMPETITIVE POSITIONING');
+  y += 4;
+  
+  autoTable(doc, {
+    startY: y,
+    head: [['Competitor Archetype', 'Share', 'Pricing', 'Key Strength', 'Key Weakness']],
+    body: marketData.competitivePositioning.competitors.map(c => [
+      c.archetype, c.market_share, c.price_tier, c.strength, c.weakness
+    ]),
+    margin: { left: MARGIN, right: MARGIN },
+    styles: { fillColor: C.darkGray, textColor: C.textLight, fontSize: 8, cellPadding: 3, lineColor: C.midGray, lineWidth: 0.1, font: 'helvetica' },
+    headStyles: { fillColor: C.orange, textColor: C.black, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
+    columnStyles: { 0: { fontStyle: 'bold' } },
+  });
+  y = (doc as any).lastAutoTable.finalY + 8;
+  y = subHeading(doc, y, 'Strategic Moat Analysis');
+  y = bodyText(doc, marketData.competitivePositioning.narrative, y);
+
+  // 5. SWOT Analysis
+  y = newPage(doc);
+  y = sectionTitle(doc, y, 'SWOT ANALYSIS');
+  y += 4;
+  
+  const swotGroups = [
+    { title: 'STRENGTHS', items: marketData.swotAnalysis.strengths },
+    { title: 'WEAKNESSES', items: marketData.swotAnalysis.weaknesses },
+    { title: 'OPPORTUNITIES', items: marketData.swotAnalysis.opportunities },
+    { title: 'THREATS', items: marketData.swotAnalysis.threats }
+  ];
+  
+  for (const group of swotGroups) {
+    if (y > BOTTOM_SAFE - 30) y = newPage(doc);
+    y = subHeading(doc, y, group.title);
+    
+    autoTable(doc, {
+      startY: y,
+      head: [['Factor', 'Impact / Risk']],
+      body: group.items.map(i => [i.factor, i.impact]),
+      margin: { left: MARGIN, right: MARGIN },
+      styles: { fillColor: C.darkGray, textColor: C.textLight, fontSize: 8, cellPadding: 3, lineColor: C.midGray, lineWidth: 0.1, font: 'helvetica' },
+      headStyles: { fillColor: C.orange, textColor: C.black, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
+      columnStyles: { 0: { cellWidth: 80, fontStyle: 'bold' } }
+    });
+    y = (doc as any).lastAutoTable.finalY + 8;
   }
 
-  // Strategic Recommendations + KPIs on their own page
-  let y = newPage(doc);
+  // 6. Strategic Recommendations
+  y = newPage(doc);
   y = sectionTitle(doc, y, 'STRATEGIC RECOMMENDATIONS');
-  y += 2;
-  y = bodyText(doc, marketData.strategicRecommendations, y);
-  y += 6;
+  y += 4;
+  
+  for (const rec of marketData.strategicRecommendations) {
+    y = safeY(doc, y, 40);
+    // Header block
+    doc.setFillColor(...C.darkGray);
+    doc.roundedRect(MARGIN, y, CONTENT_W, 10, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...C.orangeDark);
+    doc.text(rec.title, MARGIN + 4, y + 6.5);
+    
+    // Metadata tags
+    doc.setFontSize(8);
+    doc.setTextColor(...C.textMuted);
+    const meta = `Timeline: ${rec.timeline}  •  Investment: ${rec.investment}  •  ROI: ${rec.roi}`;
+    doc.text(meta, PAGE_W - MARGIN - 4, y + 6.5, { align: 'right' });
+    y += 14;
+    
+    // Steps
+    for (const step of rec.steps) {
+      y = safeY(doc, y, 6);
+      doc.setFillColor(...C.orangeDark);
+      doc.circle(MARGIN + 3, y - 1, 0.8, 'F');
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...C.textLight);
+      y = bodyText(doc, step, y, { maxWidth: CONTENT_W - 8 });
+    }
+    y += 6;
+  }
+
+  // 7. KPI Framework
+  y = newPage(doc);
   y = sectionTitle(doc, y, 'KEY PERFORMANCE INDICATORS (KPIs)');
-  y += 2;
-  y = bodyText(doc, marketData.kpiFramework, y);
+  y += 4;
+  
+  autoTable(doc, {
+    startY: y,
+    head: [['Category', 'Metric', 'Baseline', '6M Target', '12M Target', 'Frequency']],
+    body: marketData.kpiFramework.map(k => [
+      k.category, k.metric, k.baseline, k.target_6m, k.target_12m, k.frequency
+    ]),
+    margin: { left: MARGIN, right: MARGIN },
+    styles: { fillColor: C.darkGray, textColor: C.textLight, fontSize: 8, cellPadding: 3, lineColor: C.midGray, lineWidth: 0.1, font: 'helvetica' },
+    headStyles: { fillColor: C.orange, textColor: C.black, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
+    columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', textColor: C.orangeDark } }
+  });
 }
 
 // ─── FRAMEWORK SECTIONS (with full reference material) ──────────────
@@ -457,7 +646,7 @@ function drawFrameworkSections(doc: jsPDF, brandscript: BrandScript): void {
         fontSize: 8,
       },
       alternateRowStyles: {
-        fillColor: [16, 16, 22] as [number, number, number],
+        fillColor: [250, 250, 250] as [number, number, number],
       },
       columnStyles: {
         0: { cellWidth: 30, fontStyle: 'bold', textColor: C.orangeLight },
@@ -488,7 +677,7 @@ function drawSuperpowerRef(doc: jsPDF): void {
     margin: { left: MARGIN, right: MARGIN },
     styles: { fillColor: C.darkGray, textColor: C.textLight, fontSize: 8, cellPadding: 3.5, lineColor: C.midGray, lineWidth: 0.2, font: 'helvetica' },
     headStyles: { fillColor: C.orange, textColor: C.black, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [16, 16, 22] as [number, number, number] },
+    alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
     columnStyles: { 0: { cellWidth: 35, fontStyle: 'bold', textColor: C.orangeLight } },
     didDrawPage: () => darkBg(doc),
   });
@@ -505,7 +694,7 @@ function drawSuperpowerRef(doc: jsPDF): void {
     margin: { left: MARGIN, right: MARGIN },
     styles: { fillColor: C.darkGray, textColor: C.textLight, fontSize: 8, cellPadding: 3.5, lineColor: C.midGray, lineWidth: 0.2, font: 'helvetica' },
     headStyles: { fillColor: C.orange, textColor: C.black, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [16, 16, 22] as [number, number, number] },
+    alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
     columnStyles: { 0: { cellWidth: 35, fontStyle: 'bold', textColor: C.orangeLight } },
     didDrawPage: () => darkBg(doc),
   });
@@ -530,7 +719,7 @@ function drawArchetypeRef(doc: jsPDF): void {
     margin: { left: MARGIN, right: MARGIN },
     styles: { fillColor: C.darkGray, textColor: C.textLight, fontSize: 7.5, cellPadding: 4, lineColor: C.midGray, lineWidth: 0.2, overflow: 'linebreak', font: 'helvetica' },
     headStyles: { fillColor: C.orange, textColor: C.black, fontStyle: 'bold', fontSize: 8.5 },
-    alternateRowStyles: { fillColor: [16, 16, 22] as [number, number, number] },
+    alternateRowStyles: { fillColor: [250, 250, 250] as [number, number, number] },
     columnStyles: {
       0: { cellWidth: 35, fontStyle: 'bold', textColor: C.orangeLight },
       1: { cellWidth: 'auto' },

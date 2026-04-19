@@ -675,6 +675,15 @@ btnReset.addEventListener('click', () => {
 // ─── DOWNLOAD B.I.G DOC PDF ─────────────────────────────────────────
 
 btnDownloadPdf.addEventListener('click', async () => {
+  const stats = getProgressStats();
+  if (stats.pct !== 100) {
+    addSystemMessage({
+      role: 'agent',
+      content: `⚠️ **Action Not Allowed**\n\nPlease complete all 8 framework sections before exporting the B.I.G. Doc. You are currently at ${stats.pct}% completion.`,
+    });
+    return;
+  }
+
   // Disable button and show generating state
   btnDownloadPdf.disabled = true;
   const originalLabel = btnDownloadPdf.innerHTML;
