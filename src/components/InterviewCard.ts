@@ -73,19 +73,22 @@ export function renderInterviewCard(
   container.appendChild(wrapper);
   container.scrollTop = container.scrollHeight;
 
-  // Render field progress dots
-  renderFieldProgress(sectionId, section, cardState);
+  // Render field progress dots (clickable)
+  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine);
 
   // Render first field
   renderField(sectionId, section, questions, cardState, 0, onComplete, onAiRefine);
 }
 
-// ─── FIELD PROGRESS DOTS ────────────────────────────────────────────
+// ─── FIELD PROGRESS DOTS (clickable for direct navigation) ─────────
 
 function renderFieldProgress(
   sectionId: SectionId,
   section: typeof FRAMEWORK[number],
-  cardState: CardState
+  cardState: CardState,
+  questions?: Record<string, FieldQuestionConfig>,
+  onComplete?: (sectionId: SectionId) => void,
+  onAiRefine?: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
 ): void {
   const container = document.getElementById(`ic-fieldprog-${sectionId}`);
   if (!container) return;
@@ -93,8 +96,29 @@ function renderFieldProgress(
   container.innerHTML = section.fields.map((field, i) => {
     const filled = state.brandscript[sectionId][field.id] || cardState.customTexts[field.id] || (cardState.selectedOptions[field.id]?.length > 0);
     const active = i === cardState.currentFieldIndex;
-    return `<div class="ic-field-dot ${filled ? 'filled' : ''} ${active ? 'active' : ''}" title="${field.label}"></div>`;
+    return `<div class="ic-field-dot ${filled ? 'filled' : ''} ${active ? 'active' : ''}" data-field-index="${i}" title="${field.label} — click to jump"></div>`;
   }).join('');
+
+  // Make dots clickable for direct jump
+  if (questions && onComplete && onAiRefine) {
+    container.querySelectorAll('.ic-field-dot').forEach(dot => {
+      (dot as HTMLElement).addEventListener('click', () => {
+        const idx = parseInt((dot as HTMLElement).dataset.fieldIndex || '0');
+        // Save current field before jumping
+        const currentField = section.fields[cardState.currentFieldIndex];
+        if (currentField) {
+          const selected = cardState.selectedOptions[currentField.id] || [];
+          const custom = cardState.customTexts[currentField.id] || '';
+          const answer = custom || selected.join('; ');
+          if (answer) {
+            applyExtractions([{ section: sectionId, field: currentField.id, value: answer }]);
+            saveSession();
+          }
+        }
+        renderField(sectionId, section, questions, cardState, idx, onComplete, onAiRefine);
+      });
+    });
+  }
 }
 
 // ─── RENDER INDIVIDUAL FIELD QUESTION ───────────────────────────────
@@ -119,7 +143,7 @@ function renderField(
   }
 
   cardState.currentFieldIndex = fieldIndex;
-  renderFieldProgress(sectionId, section, cardState);
+  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine);
 
   const field = section.fields[fieldIndex];
   const q = questions[field.id];
@@ -208,11 +232,28 @@ function renderField(
 
   // Footer buttons
   footer.innerHTML = `
-    <button class="ic-btn-skip" id="ic-skip-${sectionId}">Skip</button>
+    <div style="display: flex; gap: 8px;">
+      ${fieldIndex > 0 ? `<button class="ic-btn-skip" id="ic-back-${sectionId}">← Back</button>` : ''}
+      <button class="ic-btn-skip" id="ic-skip-${sectionId}">Skip</button>
+    </div>
     <button class="ic-btn-next" id="ic-next-${sectionId}" style="background: ${section.color}">
       ${fieldIndex < section.fields.length - 1 ? 'Next →' : 'Review ✓'}
     </button>
   `;
+
+  if (fieldIndex > 0) {
+    document.getElementById(`ic-back-${sectionId}`)!.addEventListener('click', () => {
+      // Save current input to state before navigating back
+      const selected = cardState.selectedOptions[field.id] || [];
+      const custom = cardState.customTexts[field.id] || '';
+      const answer = custom || selected.join('; ');
+      if (answer) {
+        applyExtractions([{ section: sectionId, field: field.id, value: answer }]);
+        saveSession();
+      }
+      renderField(sectionId, section, questions, cardState, fieldIndex - 1, onComplete, onAiRefine);
+    });
+  }
 
   document.getElementById(`ic-skip-${sectionId}`)!.addEventListener('click', () => {
     renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine);
@@ -263,6 +304,7 @@ function renderSummary(
   onComplete: (sectionId: SectionId) => void,
   onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
 ): void {
+  const questions = getSectionQuestions(sectionId);
   const filledFields = section.fields.filter(f => state.brandscript[sectionId][f.id]);
   const emptyFields = section.fields.filter(f => !state.brandscript[sectionId][f.id]);
 
@@ -273,18 +315,19 @@ function renderSummary(
         <h4>${section.label} — ${filledFields.length}/${section.fields.length} completed</h4>
       </div>
       <div class="ic-summary-fields">
-        ${filledFields.map(f => `
-          <div class="ic-summary-field filled">
-            <span class="ic-sf-label">${f.label}</span>
-            <span class="ic-sf-value">${truncate(state.brandscript[sectionId][f.id], 60)}</span>
-          </div>
-        `).join('')}
-        ${emptyFields.map(f => `
-          <div class="ic-summary-field empty">
-            <span class="ic-sf-label">${f.label}</span>
-            <span class="ic-sf-value">Skipped</span>
-          </div>
-        `).join('')}
+        ${section.fields.map((f, i) => {
+          const value = state.brandscript[sectionId][f.id];
+          const isFilled = !!value;
+          return `
+            <div class="ic-summary-field ${isFilled ? 'filled' : 'empty'}" data-edit-index="${i}" style="cursor: pointer;" title="Click to edit">
+              <span class="ic-sf-label">${f.label}</span>
+              <div class="ic-sf-right">
+                <span class="ic-sf-value">${isFilled ? truncate(value, 50) : 'Skipped'}</span>
+                <span class="ic-sf-edit">✎</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
       </div>
       ${filledFields.length > 0 ? `
         <button class="ic-btn-refine" id="ic-refine-${sectionId}" style="border-color: ${section.color}; color: ${section.color}">
@@ -294,6 +337,14 @@ function renderSummary(
     </div>
   `;
 
+  // Click any summary row to jump back to that field for editing
+  body.querySelectorAll('[data-edit-index]').forEach(row => {
+    (row as HTMLElement).addEventListener('click', () => {
+      const idx = parseInt((row as HTMLElement).dataset.editIndex || '0');
+      renderField(sectionId, section, questions, cardState, idx, onComplete, onAiRefine);
+    });
+  });
+
   footer.innerHTML = `
     <button class="ic-btn-skip" id="ic-redo-${sectionId}">↩ Redo section</button>
     <button class="ic-btn-next" id="ic-done-${sectionId}" style="background: ${section.color}">Complete ✓</button>
@@ -301,7 +352,6 @@ function renderSummary(
 
   document.getElementById(`ic-redo-${sectionId}`)?.addEventListener('click', () => {
     cardState.currentFieldIndex = 0;
-    const questions = getSectionQuestions(sectionId);
     renderField(sectionId, section, questions, cardState, 0, onComplete, onAiRefine);
   });
 
@@ -310,12 +360,11 @@ function renderSummary(
   });
 
   document.getElementById(`ic-refine-${sectionId}`)?.addEventListener('click', () => {
-    // Collect all answers for AI refinement
     const allAnswers = filledFields.map(f => `${f.label}: ${state.brandscript[sectionId][f.id]}`).join('\n');
     onAiRefine(sectionId, '*', allAnswers);
   });
 
-  renderFieldProgress(sectionId, section, cardState);
+  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine);
   updateRing(sectionId, section, cardState);
 }
 

@@ -1,90 +1,89 @@
-# VMV8 — Brand Strategy Agent: System Implementation
-
-## Architecture Overview
-
-VMV8 (Voice Matrix V8) is an AI-powered reasoning agent that automatically extracts, analyzes, and generates comprehensive brand strategies from raw meeting conversations. The agent — nicknamed **Brandy** — is the first of three planned autonomous agents for the Volcanic Marketing platform.
-
-### Agent Roadmap
-1. **Agent 1: Brandy** (Branding Agent) — *Current build*
-2. **Agent 2: Mark** (Market Research Agent) — *Planned*
-3. **Agent 3: CC** (Campaign & Content Agent) — *Planned*
+This is a solid foundation but the architecture has some real structural issues worth addressing. Let me break it down visually first, then go through the recommendations.Here are the 6 concrete improvements to make, in order of priority:
 
 ---
 
-## System Architecture
+**1. Replace the EXTRACT: regex with structured JSON output**
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                    VMV8 Frontend (Vite)                    │
-│  ┌──────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │ Sidebar   │  │  Chat Area   │  │  B.I.G Doc Panel  │  │
-│  │ - Nav     │  │  - Messages  │  │  - 8 Sections     │  │
-│  │ - Progress│  │  - Input     │  │  - Live Preview   │  │
-│  │ - Checks  │  │  - Upload    │  │  - Filled Status  │  │
-│  └──────────┘  └──────────────┘  └────────────────────┘  │
-│                        │                                   │
-│          ┌─────────────┼─────────────┐                    │
-│          │             │             │                     │
-│    ┌─────▼─────┐ ┌────▼────┐ ┌─────▼─────┐              │
-│    │   Groq    │ │ Whisper │ │  Session   │              │
-│    │  LLaMA    │ │  STT    │ │ Storage    │              │
-│    │  3.3-70B  │ │ V3-Turbo│ │(localStorage)│            │
-│    └───────────┘ └─────────┘ └───────────┘              │
-└──────────────────────────────────────────────────────────┘
+This is the biggest fragility in the whole app. The `[EXTRACT: section.field]` pattern breaks the moment the model deviates slightly. Use Groq's JSON mode instead — define a schema and force the model to return a typed object:
+
+```js
+// extraction.service.js
+const response = await groq.chat.completions.create({
+  model: 'llama-3.3-70b-versatile',
+  response_format: { type: 'json_object' },
+  messages: [...],
+});
+const extractions = JSON.parse(response.choices[0].message.content);
+// Now extractions is a guaranteed typed object — no regex needed
 ```
 
-## Core Components
+---
 
-### 1. AI Reasoning Engine (Groq LLaMA 3.3-70B)
-- **System Prompt**: Comprehensive VMV8 framework instructions with chain-of-thought reasoning
-- **Context Injection**: Current B.I.G Doc status injected on every call
-- **Extraction Tags**: `[EXTRACT: section.field]` pattern for auto-populating the document
-- **Conversation Memory**: Last 20 messages retained for context continuity
-- **Retry Logic**: Automatic retry on rate limits with exponential backoff
+**2. Delete `analyzeInput()` and `generateAgentResponse()`**
 
-### 2. Speech-to-Text (Groq Whisper Large V3 Turbo)
-- **Live Recording**: Browser MediaRecorder API with real-time waveform visualization
-- **Live Transcription**: Incremental transcription every 2.5 seconds during recording
-- **File Upload**: Drag-and-drop or file picker for pre-recorded audio
-- **Supported Formats**: MP3, WAV, M4A, WEBM, OGG, FLAC (max 25MB)
+Both are dead code — they're never called after you wired in Groq. `analyzeInput()` is ~150 lines of regex that runs zero times. Delete it both to clean up and to prevent a future developer accidentally wiring it back in and getting confused why it conflicts with Groq.
 
-### 3. VMV8 Framework (8 Sections, 25 Fields)
+---
 
-| Section | Fields | Color |
-|---------|--------|-------|
-| **Name** | Purpose, Origin Story (Character/Problem/Guide), Tagline, Slogan | #FF6B35 |
-| **Character** | Values, Conviction & Cause, Charity | #E86FBF |
-| **Intent** | Vision, Mission, Message | #7C6BFF |
-| **Voice** | Archetype, Tone (Plutchik), Topics of Authority | #4ECDC4 |
-| **Creation** | Product, Service, Superpower | #F7C948 |
-| **Operation** | Tools, Processes, Systems, Logistics | #45B7D1 |
-| **Image** | Logo, Fonts, Colour Palette | #FF8C61 |
-| **Administration** | Policies, Procedures, Legal, Finance | #98D4A6 |
+**3. Add a persistence layer**
 
-### 4. Session Persistence
-- Auto-saves to `localStorage` after every interaction
-- Restores brandscript, conversation history, and progress on reload
-- Session indicator in header shows save status
+Right now the user loses their entire BrandScript on page refresh. One line fixes this:
 
-### 5. B.I.G Doc Export
-- Exports as formatted Markdown (.md)
-- Includes all 8 sections with field descriptions
-- Contains generated metadata (date, framework version)
+```js
+// After any state change:
+localStorage.setItem('brandscript', JSON.stringify(state.brandscript));
 
-## Tech Stack
-- **Build Tool**: Vite 8
-- **AI**: Groq SDK (Browser) — LLaMA 3.3-70B + Whisper Large V3 Turbo
-- **Language**: Vanilla JavaScript (ES Modules)
-- **Styling**: Custom CSS with CSS Variables, Glassmorphism, Ambient Animations
-- **Typography**: Inter + Outfit (Google Fonts)
-- **Storage**: localStorage for session persistence
+// On init:
+const saved = localStorage.getItem('brandscript');
+if (saved) state.brandscript = JSON.parse(saved);
+```
 
-## Data Flow
+If you move to Zustand or Pinia, the `persist` middleware does this automatically.
 
-1. **Input** → User pastes transcript / records audio / uploads file / types answer
-2. **Transcription** → Audio inputs are transcribed via Groq Whisper
-3. **AI Analysis** → Groq LLaMA analyzes input with VMV8 framework context
-4. **Extraction** → `[EXTRACT: section.field]` tags parsed from AI response
-5. **State Update** → Brandscript state updated, UI re-rendered
-6. **Persistence** → Session auto-saved to localStorage
-7. **Export** → User downloads formatted B.I.G Doc when ready
+---
+
+**4. Guard the context window**
+
+`state.conversationHistory` grows indefinitely. A long brand strategy session could hit the model's context limit and silently fail. Trim it:
+
+```js
+const MAX_HISTORY = 20;
+const trimmed = state.conversationHistory.slice(-MAX_HISTORY);
+// Use trimmed when building the messages array for the API call
+```
+
+---
+
+**5. Split into modules**
+
+The file does 6 unrelated jobs. The minimum sensible split:
+
+```
+src/
+  services/
+    groq.service.js       ← all API calls, retry logic
+    audio.service.js      ← mic, waveform, transcription
+    extraction.service.js ← JSON parsing, state updates
+  store/
+    brandscript.store.js  ← state + localStorage
+  components/
+    ChatPanel.js
+    BrandscriptPanel.js
+    AudioRecorder.js
+  config/
+    framework.js          ← FRAMEWORK constant + SYSTEM_PROMPT
+    questions.js          ← getFieldQuestion() map
+```
+
+---
+
+**6. Migrate to TypeScript**
+
+The `state.brandscript` object is accessed with string keys everywhere — typos cause silent `undefined` bugs. TypeScript fixes this:
+
+```ts
+type SectionId = 'name' | 'character' | 'intent' | 'voice' | 'creation' | 'operation' | 'image' | 'administration';
+type BrandScript = Record<SectionId, Record<string, string>>;
+```
+
+The `FRAMEWORK` config already has all the structure needed — TypeScript just enforces it at compile time.

@@ -19,6 +19,7 @@ import { callGroq } from './services/groq.service';
 import { applyExtractions } from './services/extraction.service';
 import { startRecording, stopRecording, processAudioFile, audioState } from './services/audio.service';
 import { scrapeContextSources } from './services/scrape.service';
+import { processCSVFile } from './services/csv.service';
 
 // Components
 import { renderMessage, showTyping, removeTyping } from './components/ChatPanel';
@@ -26,6 +27,7 @@ import { renderBrandscript } from './components/BrandscriptPanel';
 import { renderNav } from './components/SidebarNav';
 import { renderInterviewCard } from './components/InterviewCard';
 import type { SectionId } from './config/framework';
+import { exportBigDoc } from './services/export.service';
 
 // ─── DOM REFERENCES ─────────────────────────────────────────────────
 
@@ -54,6 +56,10 @@ const processingOverlay = document.getElementById('processing-overlay')!;
 const processingTitle = document.getElementById('processing-title')!;
 const processingSubtitle = document.getElementById('processing-subtitle')!;
 const processingProgressBar = document.getElementById('processing-progress-bar')!;
+
+// CSV elements
+const btnCsvUpload  = document.getElementById('btn-csv-upload') as HTMLButtonElement;
+const csvFileInput  = document.getElementById('csv-file-input') as HTMLInputElement;
 
 // Context inputs
 const ctxWebsite = document.getElementById('ctx-website') as HTMLInputElement;
@@ -480,31 +486,10 @@ btnReset.addEventListener('click', () => {
 // ─── EXPORT B.I.G DOC ──────────────────────────────────────────────
 
 btnExport.addEventListener('click', () => {
-  let md = '# 🌋 Brand Identity Guiding Document (B.I.G Doc)\n';
-  md += `## VMV8 — Voice Matrix V8 Brand Strategy Framework\n\n`;
-  md += `*Generated on ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}*\n`;
-  md += `*Powered by Brandy — VMV8 Brand Strategy Agent*\n\n---\n\n`;
-
-  FRAMEWORK.forEach(section => {
-    md += `## ${section.icon} ${section.label.toUpperCase()}\n\n`;
-    section.fields.forEach(field => {
-      const value = state.brandscript[section.id][field.id];
-      md += `### ${field.label}\n`;
-      md += `> *${field.description}*\n\n`;
-      md += value ? `${value}\n\n` : `*Not yet defined*\n\n`;
-    });
-    md += '---\n\n';
-  });
-
-  md += `\n## About This Document\nThis B.I.G Doc was generated using the VMV8 (Voice Matrix V8) framework by Volcanic Marketing.\n`;
-
-  const blob = new Blob([md], { type: 'text/markdown' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'BIG-Doc-Brand-Identity-Guide.md';
-  a.click();
-  URL.revokeObjectURL(url);
+  // Detect country from context inputs or finance field
+  const countryEl = document.getElementById('ctx-country') as HTMLSelectElement | null;
+  const country = countryEl?.value || state.brandscript.administration?.finance || 'South Africa';
+  exportBigDoc(country);
 });
 
 // ─── AUDIO: MIC RECORDING ───────────────────────────────────────────
@@ -543,6 +528,21 @@ fileInput.addEventListener('change', (e) => {
     processAudioFile(target.files[0], processingOverlay, processingTitle, processingSubtitle, processingProgressBar, handleUserInput, addSystemMessage);
   }
   fileInput.value = '';
+});
+
+// ─── CSV: ANALYTICS UPLOAD ──────────────────────────────────────────
+
+btnCsvUpload.addEventListener('click', () => csvFileInput.click());
+csvFileInput.addEventListener('change', (e) => {
+  const target = e.target as HTMLInputElement;
+  if (target.files && target.files.length > 0) {
+    processCSVFile(
+      target.files[0],
+      (msg) => addSystemMessage(msg),
+      (msg) => addSystemMessage(msg)
+    );
+  }
+  csvFileInput.value = '';
 });
 
 // Drag & Drop
