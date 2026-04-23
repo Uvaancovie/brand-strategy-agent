@@ -19,7 +19,8 @@ export function renderInterviewCard(
   container: HTMLElement,
   sectionId: SectionId,
   onComplete: (sectionId: SectionId) => void,
-  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
+  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void,
+  onPrevious?: () => void
 ): void {
   const section = FRAMEWORK.find(s => s.id === sectionId);
   if (!section) return;
@@ -74,10 +75,10 @@ export function renderInterviewCard(
   container.scrollTop = container.scrollHeight;
 
   // Render field progress dots (clickable)
-  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine);
+  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine, onPrevious);
 
   // Render first field
-  renderField(sectionId, section, questions, cardState, 0, onComplete, onAiRefine);
+  renderField(sectionId, section, questions, cardState, 0, onComplete, onAiRefine, onPrevious);
 }
 
 // ─── FIELD PROGRESS DOTS (clickable for direct navigation) ─────────
@@ -88,7 +89,8 @@ function renderFieldProgress(
   cardState: CardState,
   questions?: Record<string, FieldQuestionConfig>,
   onComplete?: (sectionId: SectionId) => void,
-  onAiRefine?: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
+  onAiRefine?: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void,
+  onPrevious?: () => void
 ): void {
   const container = document.getElementById(`ic-fieldprog-${sectionId}`);
   if (!container) return;
@@ -115,7 +117,7 @@ function renderFieldProgress(
             saveSession();
           }
         }
-        renderField(sectionId, section, questions, cardState, idx, onComplete, onAiRefine);
+        renderField(sectionId, section, questions, cardState, idx, onComplete, onAiRefine, onPrevious);
       });
     });
   }
@@ -130,7 +132,8 @@ function renderField(
   cardState: CardState,
   fieldIndex: number,
   onComplete: (sectionId: SectionId) => void,
-  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
+  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void,
+  onPrevious?: () => void
 ): void {
   const body = document.getElementById(`ic-body-${sectionId}`);
   const footer = document.getElementById(`ic-footer-${sectionId}`);
@@ -138,12 +141,12 @@ function renderField(
 
   // If all fields done, show summary
   if (fieldIndex >= section.fields.length) {
-    renderSummary(sectionId, section, cardState, body, footer, onComplete, onAiRefine);
+    renderSummary(sectionId, section, cardState, body, footer, onComplete, onAiRefine, onPrevious);
     return;
   }
 
   cardState.currentFieldIndex = fieldIndex;
-  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine);
+  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine, onPrevious);
 
   const field = section.fields[fieldIndex];
   const q = questions[field.id];
@@ -151,7 +154,7 @@ function renderField(
 
   if (!q) {
     // No question config — skip to next
-    renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine);
+    renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine, onPrevious);
     return;
   }
 
@@ -225,7 +228,7 @@ function renderField(
     customInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        saveFieldAndAdvance(sectionId, section, questions, cardState, field.id, fieldIndex, onComplete, onAiRefine);
+        saveFieldAndAdvance(sectionId, section, questions, cardState, field.id, fieldIndex, onComplete, onAiRefine, onPrevious);
       }
     });
   }
@@ -233,7 +236,7 @@ function renderField(
   // Footer buttons
   footer.innerHTML = `
     <div style="display: flex; gap: 8px;">
-      ${fieldIndex > 0 ? `<button class="ic-btn-skip" id="ic-back-${sectionId}">← Back</button>` : ''}
+      ${fieldIndex > 0 ? `<button class="ic-btn-skip" id="ic-back-${sectionId}">← Back</button>` : `<button class="ic-btn-skip" id="ic-prev-sec-${sectionId}">← Previous Section</button>`}
       <button class="ic-btn-skip" id="ic-skip-${sectionId}">Skip</button>
     </div>
     <button class="ic-btn-next" id="ic-next-${sectionId}" style="background: ${section.color}">
@@ -251,16 +254,20 @@ function renderField(
         applyExtractions([{ section: sectionId, field: field.id, value: answer }]);
         saveSession();
       }
-      renderField(sectionId, section, questions, cardState, fieldIndex - 1, onComplete, onAiRefine);
+      renderField(sectionId, section, questions, cardState, fieldIndex - 1, onComplete, onAiRefine, onPrevious);
+    });
+  } else {
+    document.getElementById(`ic-prev-sec-${sectionId}`)?.addEventListener('click', () => {
+      if (onPrevious) onPrevious();
     });
   }
 
   document.getElementById(`ic-skip-${sectionId}`)!.addEventListener('click', () => {
-    renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine);
+    renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine, onPrevious);
   });
 
   document.getElementById(`ic-next-${sectionId}`)!.addEventListener('click', () => {
-    saveFieldAndAdvance(sectionId, section, questions, cardState, field.id, fieldIndex, onComplete, onAiRefine);
+    saveFieldAndAdvance(sectionId, section, questions, cardState, field.id, fieldIndex, onComplete, onAiRefine, onPrevious);
   });
 
   // Animate in
@@ -277,7 +284,8 @@ function saveFieldAndAdvance(
   fieldId: string,
   fieldIndex: number,
   onComplete: (sectionId: SectionId) => void,
-  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
+  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void,
+  onPrevious?: () => void
 ): void {
   const selected = cardState.selectedOptions[fieldId] || [];
   const custom = cardState.customTexts[fieldId] || '';
@@ -290,7 +298,7 @@ function saveFieldAndAdvance(
   }
 
   updateRing(sectionId, section, cardState);
-  renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine);
+  renderField(sectionId, section, questions, cardState, fieldIndex + 1, onComplete, onAiRefine, onPrevious);
 }
 
 // ─── SUMMARY SCREEN ─────────────────────────────────────────────────
@@ -302,7 +310,8 @@ function renderSummary(
   body: HTMLElement,
   footer: HTMLElement,
   onComplete: (sectionId: SectionId) => void,
-  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void
+  onAiRefine: (sectionId: SectionId, fieldId: string, rawAnswer: string) => void,
+  onPrevious?: () => void
 ): void {
   const questions = getSectionQuestions(sectionId);
   const filledFields = section.fields.filter(f => state.brandscript[sectionId][f.id]);
@@ -341,7 +350,7 @@ function renderSummary(
   body.querySelectorAll('[data-edit-index]').forEach(row => {
     (row as HTMLElement).addEventListener('click', () => {
       const idx = parseInt((row as HTMLElement).dataset.editIndex || '0');
-      renderField(sectionId, section, questions, cardState, idx, onComplete, onAiRefine);
+      renderField(sectionId, section, questions, cardState, idx, onComplete, onAiRefine, onPrevious);
     });
   });
 
@@ -352,7 +361,7 @@ function renderSummary(
 
   document.getElementById(`ic-redo-${sectionId}`)?.addEventListener('click', () => {
     cardState.currentFieldIndex = 0;
-    renderField(sectionId, section, questions, cardState, 0, onComplete, onAiRefine);
+    renderField(sectionId, section, questions, cardState, 0, onComplete, onAiRefine, onPrevious);
   });
 
   document.getElementById(`ic-done-${sectionId}`)?.addEventListener('click', () => {
@@ -364,7 +373,7 @@ function renderSummary(
     onAiRefine(sectionId, '*', allAnswers);
   });
 
-  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine);
+  renderFieldProgress(sectionId, section, cardState, questions, onComplete, onAiRefine, onPrevious);
   updateRing(sectionId, section, cardState);
 }
 

@@ -267,27 +267,72 @@ export async function processAudioFile(
   onTranscript: (text: string) => void,
   onError: (msg: ChatMessage) => void
 ): Promise<void> {
-  const maxSize = 25 * 1024 * 1024;
-  if (file.size > maxSize) {
-    onError({ role: 'agent', content: `⚠️ **File Too Large**\n\nMax size is 25MB. Your file: ${(file.size / 1024 / 1024).toFixed(1)}MB.` });
-    return;
-  }
-
   overlayEl.classList.add('active');
   titleEl.textContent = 'Processing Audio';
   subtitleEl.textContent = `Transcribing "${file.name}" with Whisper AI...`;
-  progressBar.style.width = '30%';
+  progressBar.style.width = '10%';
+
+  const MAX_DIRECT_SIZE = 24 * 1024 * 1024; // 24MB safe limit for direct Groq
 
   try {
-    progressBar.style.width = '60%';
-    const fullText = await transcribeAudio(file);
-    progressBar.style.width = '90%';
+    let fullText = '';
+    
+    if (file.size <= MAX_DIRECT_SIZE) {
+      progressBar.style.width = '50%';
+      fullText = await transcribeAudio(file);
+      progressBar.style.width = '90%';
+    } else {
+      // Very large file -> decode and chunk
+      subtitleEl.textContent = `File is large (${(file.size/1024/1024).toFixed(1)}MB). Slicing audio...`;
+      progressBar.style.width = '15%';
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      
+      const sampleRate = audioBuffer.sampleRate;
+      const numChannels = audioBuffer.numberOfChannels;
+      const duration = audioBuffer.duration;
+      
+      // WAV is uncompressed. 24MB = ~4.5 minutes of 44.1kHz mono.
+      // We use 4 minutes safe chunks
+      const CHUNK_DURATION = 4 * 60; 
+      const totalChunks = Math.ceil(duration / CHUNK_DURATION);
+      
+      subtitleEl.textContent = `Transcribing in ${totalChunks} parts...`;
+      
+      for (let i = 0; i < totalChunks; i++) {
+        const startSec = i * CHUNK_DURATION;
+        const endSec = Math.min((i + 1) * CHUNK_DURATION, duration);
+        const chunkLength = Math.floor((endSec - startSec) * sampleRate);
+        
+        const chunkBuffer = audioCtx.createBuffer(numChannels, chunkLength, sampleRate);
+        for (let c = 0; c < numChannels; c++) {
+          const channelData = audioBuffer.getChannelData(c);
+          const chunkData = chunkBuffer.getChannelData(c);
+          const offset = Math.floor(startSec * sampleRate);
+          chunkData.set(channelData.subarray(offset, offset + chunkLength));
+        }
+        
+        const wavBlob = audioBufferToWavBlob(chunkBuffer);
+        const chunkFile = new File([wavBlob], `chunk_${i}.wav`, { type: 'audio/wav' });
+        
+        subtitleEl.textContent = `Transcribing part ${i + 1} of ${totalChunks}...`;
+        const text = await transcribeAudio(chunkFile);
+        fullText += text + ' ';
+        
+        progressBar.style.width = `${15 + Math.floor(((i + 1) / totalChunks) * 75)}%`;
+      }
+    }
 
-    overlayEl.classList.remove('active');
-    progressBar.style.width = '0%';
+    progressBar.style.width = '100%';
+    setTimeout(() => {
+      overlayEl.classList.remove('active');
+      progressBar.style.width = '0%';
+    }, 500);
 
-    if (fullText) {
-      onTranscript(`📁 [Audio File: ${file.name}]\n\n${fullText}`);
+    if (fullText.trim()) {
+      onTranscript(`📁 [Audio File: ${file.name}]\n\n${fullText.trim()}`);
     } else {
       onError({ role: 'agent', content: `📁 **Audio Processed** — No speech detected in "${file.name}".` });
     }
@@ -297,4 +342,49 @@ export async function processAudioFile(
     console.error('Transcription error:', e);
     onError({ role: 'agent', content: `📁 **Transcription Failed** — ${(e as Error).message}` });
   }
+}
+
+// Helper: Convert AudioBuffer to WAV byte array
+function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
+  const numChannels = buffer.numberOfChannels;
+  const length = buffer.length * numChannels * 2; 
+  const arrayBuffer = new ArrayBuffer(44 + length);
+  const view = new DataView(arrayBuffer);
+  const channels = [];
+  const sampleRate = buffer.sampleRate;
+  let offset = 0;
+  let pos = 0;
+
+  function setUint16(data: number) { view.setUint16(pos, data, true); pos += 2; }
+  function setUint32(data: number) { view.setUint32(pos, data, true); pos += 4; }
+
+  setUint32(0x46464952); // "RIFF"
+  setUint32(36 + length);
+  setUint32(0x45564157); // "WAVE"
+  setUint32(0x20746d66); // "fmt "
+  setUint32(16); // length of fmt data
+  setUint16(1); // format: PCM
+  setUint16(numChannels);
+  setUint32(sampleRate);
+  setUint32(sampleRate * 2 * numChannels); // byte rate
+  setUint16(numChannels * 2); // block align
+  setUint16(16); // bits per sample
+  setUint32(0x61746164); // "data"
+  setUint32(length);
+
+  for (let i = 0; i < buffer.numberOfChannels; i++) {
+    channels.push(buffer.getChannelData(i));
+  }
+
+  while (offset < buffer.length) {
+    for (let i = 0; i < numChannels; i++) {
+      let sample = Math.max(-1, Math.min(1, channels[i][offset]));
+      sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(pos, sample, true);
+      pos += 2;
+    }
+    offset++;
+  }
+
+  return new Blob([arrayBuffer], { type: 'audio/wav' });
 }
