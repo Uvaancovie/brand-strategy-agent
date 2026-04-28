@@ -104,17 +104,22 @@ export function generateHtmlDoc(options: ExportOptions): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BIG Doc: ${resolvedBrandName}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet">
   <style>
-    /* STRICT BLACK AND WHITE PROFESSIONAL STYLES */
+    /* PREMIUM CORPORATE STYLES - VOLCANIC ORANGE, CHARCOAL & AMBER */
     :root {
-      --black: #111111;
+      --brand-orange: #FF5A00;
+      --brand-amber: #FFB300;
+      --brand-charcoal: #1A1A1A;
+      --brand-charcoal-light: #2C2C2C;
+      --brand-slate: #4A4A4A;
+      --black: #000000;
       --dark-gray: #333333;
-      --mid-gray: #777777;
-      --light-gray: #eeeeee;
-      --off-white: #f8f8f8;
+      --mid-gray: #888888;
+      --light-gray: #E0E0E0;
+      --off-white: #F9F9F9;
       --white: #ffffff;
-      --font-serif: "Georgia", "Times New Roman", serif;
-      --font-sans: "Helvetica Neue", "Arial", sans-serif;
+      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
     * { box-sizing: border-box; }
@@ -123,7 +128,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
       margin: 0;
       padding: 0;
       font-family: var(--font-sans);
-      color: var(--black);
+      color: var(--brand-charcoal);
       background-color: var(--light-gray);
       line-height: 1.6;
     }
@@ -137,16 +142,16 @@ export function generateHtmlDoc(options: ExportOptions): string {
     }
     
     @media screen {
-      .page-break { margin-bottom: 2rem; border-bottom: 1px solid var(--light-gray); padding-bottom: 2rem; }
+      .page-break { margin-bottom: 3rem; border-bottom: 2px solid var(--light-gray); padding-bottom: 3rem; }
     }
 
     @media print {
-      body { background: var(--white); }
+      body { background: var(--white); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .document { max-width: 100%; box-shadow: none; padding: 0; margin: 0; }
-      .page-break { page-break-before: always; margin-top: 20mm; }
+      .page-break { page-break-before: always; margin-top: 15mm; }
     }
 
-    h1, h2, h3, h4 { font-family: var(--font-sans); color: var(--black); margin-top: 0; }
+    h1, h2, h3, h4 { font-family: var(--font-sans); color: var(--brand-charcoal); margin-top: 0; }
     
     /* Cover Page */
     .cover-page {
@@ -156,73 +161,122 @@ export function generateHtmlDoc(options: ExportOptions): string {
       align-items: center;
       text-align: center;
       min-height: 250mm;
+      background-color: var(--brand-charcoal);
+      color: var(--white);
+      padding: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover-page::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 12px;
+      background: linear-gradient(90deg, var(--brand-orange), var(--brand-amber));
+    }
+    .cover-page::after {
+      content: "";
+      position: absolute;
+      bottom: 0; left: 0; right: 0; height: 12px;
+      background: linear-gradient(90deg, var(--brand-amber), var(--brand-orange));
     }
     .cover-eyebrow {
-      font-family: var(--font-serif);
-      font-style: italic;
-      color: var(--mid-gray);
-      font-size: 1.2rem;
+      font-size: 1rem;
+      letter-spacing: 4px;
+      color: var(--brand-amber);
       margin-bottom: 2rem;
+      text-transform: uppercase;
+      font-weight: 600;
     }
     .cover-title {
-      font-size: 4.5rem;
+      font-size: 4rem;
       font-weight: 900;
-      letter-spacing: -1px;
+      letter-spacing: -1.5px;
       line-height: 1.1;
       margin-bottom: 1rem;
       text-transform: uppercase;
+      color: var(--white);
     }
     .cover-brand {
-      font-size: 2rem;
-      color: var(--dark-gray);
-      margin-bottom: 3rem;
+      font-size: 2.5rem;
+      font-weight: 300;
+      color: var(--light-gray);
+      margin-bottom: 4rem;
     }
     .cover-grid {
-      border: 1px solid var(--light-gray);
-      padding: 2rem;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      padding: 2rem 0;
       margin-bottom: 3rem;
       width: 80%;
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
     }
-    .cover-grid p {
+    .cover-grid span {
       font-size: 0.85rem;
       letter-spacing: 2px;
-      color: var(--mid-gray);
-      margin: 0.5rem 0;
+      color: var(--white);
       text-transform: uppercase;
+      padding: 0.5rem 1rem;
+    }
+    .cover-date {
+      font-weight: 600;
+      font-size: 1.2rem;
+      color: var(--brand-orange);
+    }
+    .cover-confidential {
+      font-size: 0.75rem;
+      color: var(--mid-gray);
+      margin-top: 1rem;
+      letter-spacing: 2px;
     }
     
     /* Document Sections */
     .section-title {
-      font-size: 1.75rem;
-      font-weight: 800;
-      border-bottom: 3px solid var(--black);
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--brand-charcoal);
+      border-bottom: 4px solid var(--brand-orange);
       padding-bottom: 0.5rem;
       margin-bottom: 1.5rem;
       display: flex;
       gap: 1rem;
       align-items: center;
+      text-transform: uppercase;
+      letter-spacing: -0.5px;
     }
-    .section-title .icon { color: var(--mid-gray); }
+    .section-title .icon { color: var(--brand-orange); }
     
     .sub-heading {
-      font-size: 1.1rem;
-      font-weight: 700;
+      font-size: 1.25rem;
+      font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 1px;
-      margin-top: 2rem;
-      margin-bottom: 0.5rem;
-      color: var(--dark-gray);
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+      color: var(--brand-charcoal-light);
+      display: flex;
+      align-items: center;
+    }
+    .sub-heading::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      background-color: var(--brand-amber);
+      border-radius: 50%;
+      margin-right: 10px;
     }
     
-    p { margin-top: 0; margin-bottom: 1rem; font-size: 1rem; color: var(--dark-gray); }
+    p { margin-top: 0; margin-bottom: 1.25rem; font-size: 1.05rem; color: var(--brand-slate); }
     
-    .text-muted { color: var(--mid-gray); font-style: italic; font-size: 0.9rem; }
+    .text-muted { color: var(--mid-gray); font-style: italic; font-size: 0.95rem; }
     
     /* Context Styling */
     .context-subheading {
-      font-size: 1rem;
-      font-weight: 700;
-      color: var(--black);
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--brand-charcoal);
       margin-top: 1.5rem;
       margin-bottom: 0.5rem;
       text-transform: uppercase;
@@ -232,96 +286,157 @@ export function generateHtmlDoc(options: ExportOptions): string {
     }
     .context-block {
       background: var(--off-white);
-      border-left: 4px solid var(--black);
+      border-left: 4px solid var(--brand-charcoal);
       padding: 1.5rem;
       margin-bottom: 2rem;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
+      border-radius: 0 8px 8px 0;
     }
     
     /* Grids & Cards */
     .metric-grid {
-      display: flex;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
     }
     .metric-box {
-      flex: 1;
-      background: var(--off-white);
+      background: var(--white);
       border: 1px solid var(--light-gray);
+      border-top: 4px solid var(--brand-orange);
+      border-radius: 6px;
       padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
       text-align: center;
     }
     .metric-box-label {
-      font-size: 0.75rem;
+      font-size: 0.8rem;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: var(--mid-gray);
-      margin-bottom: 0.5rem;
+      color: var(--brand-slate);
+      margin-bottom: 0.75rem;
+      font-weight: 600;
     }
     .metric-box-val {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--black);
+      font-size: 1.8rem;
+      font-weight: 900;
+      color: var(--brand-charcoal);
     }
     
     /* Tables */
     .table-container {
-      overflow-x: auto;
-      margin-bottom: 2rem;
+      margin-bottom: 2.5rem;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      border: 1px solid var(--light-gray);
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
+      background: var(--white);
     }
     th, td {
-      padding: 1rem;
+      padding: 1.2rem;
       text-align: left;
       border-bottom: 1px solid var(--light-gray);
       vertical-align: top;
     }
     th {
-      background-color: var(--black);
+      background-color: var(--brand-charcoal);
       color: var(--white);
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
     }
+    tr:last-child td { border-bottom: none; }
     tr:nth-child(even) { background-color: var(--off-white); }
-    .col-field { font-weight: bold; width: 20%; color: var(--black); }
-    .col-desc { font-style: italic; color: var(--mid-gray); width: 30%; font-size: 0.85rem; }
-    .col-value { width: 50%; }
+    .col-field { font-weight: 800; width: 22%; color: var(--brand-charcoal); }
+    .col-desc { font-style: italic; color: var(--brand-slate); width: 28%; font-size: 0.85rem; }
+    .col-value { width: 50%; color: var(--brand-charcoal-light); }
     
     /* Strategic Output specific */
     .strategy-card {
-      background: var(--off-white);
-      border-left: 4px solid var(--black);
+      background: var(--white);
+      border: 1px solid var(--light-gray);
+      border-left: 5px solid var(--brand-amber);
+      border-radius: 6px;
       padding: 1.5rem;
-      margin-bottom: 1rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
     }
     .strategy-card h4 {
-      margin-bottom: 0.25rem;
-      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      font-size: 1.25rem;
+      color: var(--brand-charcoal);
+      font-weight: 800;
     }
     .strategy-meta {
-      font-size: 0.8rem;
-      color: var(--mid-gray);
+      display: inline-block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--white);
+      background: var(--brand-charcoal-light);
+      padding: 4px 10px;
+      border-radius: 4px;
       margin-bottom: 1rem;
       text-transform: uppercase;
+      letter-spacing: 1px;
     }
-    ul { margin: 0 0 1rem 0; padding-left: 1.5rem; color: var(--dark-gray); }
-    li { margin-bottom: 0.5rem; }
+    ul { margin: 0 0 1rem 0; padding-left: 1.5rem; color: var(--brand-slate); }
+    li { margin-bottom: 0.75rem; }
+    li::marker { color: var(--brand-orange); font-weight: bold; }
 
     /* Footer / Date */
     .doc-footer {
       text-align: center;
-      margin-top: 3rem;
+      margin-top: 4rem;
       border-top: 1px solid var(--light-gray);
-      padding-top: 1rem;
-      font-size: 0.8rem;
-      color: var(--mid-gray);
+      padding-top: 2rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--brand-slate);
+      text-transform: uppercase;
+      letter-spacing: 2px;
     }
+    
+    /* SWOT Analysis specific */
+    .swot-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    .swot-box {
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--light-gray);
+    }
+    .swot-header {
+      padding: 1rem;
+      font-weight: 800;
+      color: var(--white);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .swot-s .swot-header { background: var(--brand-charcoal); }
+    .swot-w .swot-header { background: var(--brand-orange); }
+    .swot-o .swot-header { background: var(--brand-amber); color: var(--brand-charcoal); }
+    .swot-t .swot-header { background: var(--brand-slate); }
+    
+    .swot-content {
+      padding: 0;
+      background: var(--white);
+    }
+    .swot-table {
+      width: 100%;
+      margin: 0;
+    }
+    .swot-table th { display: none; } /* Hide headers inside grid to save space */
+    .swot-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--light-gray); font-size: 0.9rem; }
+    .swot-table tr:last-child td { border-bottom: none; }
   </style>
 </head>
 <body>
@@ -333,24 +448,26 @@ export function generateHtmlDoc(options: ExportOptions): string {
       <h1 class="cover-title">Brand<br>Strategy</h1>
       <div class="cover-brand">${resolvedBrandName}</div>
       <div class="cover-grid">
-        <p>Name • Purpose • Vision</p>
-        <p>Character • Values • Cause</p>
-        <p>Voice • Tone • Archetype</p>
-        <p>Creation • Product • Power</p>
+        <span>Name • Purpose • Vision</span>
+        <span>Character • Values • Cause</span>
+        <span>Voice • Tone • Archetype</span>
+        <span>Creation • Product • Power</span>
       </div>
-      <div style="font-weight: 700;">${date}</div>
-      <div style="font-size: 0.8rem; color: var(--mid-gray); margin-top: 0.5rem; letter-spacing: 1px;">CONFIDENTIAL STRATEGIC REPORT</div>
+      <div class="cover-date">${date}</div>
+      <div class="cover-confidential">CONFIDENTIAL STRATEGIC REPORT</div>
     </div>
 
     <!-- EXECUTIVE SUMMARY -->
     <div class="page-break">
       <h2 class="section-title">Executive Summary</h2>
-      <div class="strategy-card" style="border-left: none; border-top: 4px solid var(--black);">
-        <h4>${resolvedBrandName}</h4>
-        <p style="margin: 0; font-size: 0.95rem;">${resolvedTagline}</p>
+      <div class="strategy-card" style="border-left-color: var(--brand-orange);">
+        <h4 style="font-size: 1.8rem; margin-bottom: 0.5rem;">${resolvedBrandName}</h4>
+        <p style="margin: 0; font-size: 1.1rem; font-weight: 600; color: var(--brand-slate);">${resolvedTagline}</p>
       </div>
-      <p>${formatText(marketData?.executiveSummary || '')}</p>
-      <p class="text-muted">This document synthesizes your brand strategy framework (VMV8) with AI-generated market intelligence to provide a comprehensive brand identity guide. All market data should be validated with primary research.</p>
+      <p style="font-size: 1.1rem; line-height: 1.8;">${formatText(marketData?.executiveSummary || '')}</p>
+      <div style="background: var(--off-white); padding: 1rem; border-radius: 6px; margin-top: 2rem;">
+        <p class="text-muted" style="margin: 0;">This document synthesizes your brand strategy framework (VMV8) with AI-generated market intelligence to provide a comprehensive brand identity guide. All market data should be validated with primary research.</p>
+      </div>
     </div>
 
     <!-- CONTEXT SUMMARY -->
@@ -358,7 +475,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
       <h2 class="section-title">Strategic Context</h2>
       ${contextPayload 
         ? `<div class="context-block"><p style="margin: 0;">${formatText(truncate(contextPayload, 3500))}</p></div>` 
-        : '<p><em class="text-muted">No external context was provided for this baseline document.</em></p>'}
+        : '<div class="context-block" style="border-left-color: var(--brand-slate);"><p><em class="text-muted">No external context was provided for this baseline document.</em></p></div>'}
     </div>
 
     <!-- MARKET INTELLIGENCE -->
@@ -373,31 +490,36 @@ export function generateHtmlDoc(options: ExportOptions): string {
           </div>
         `).join('') || ''}
       </div>
-      <p>${formatText(marketData.industryOverview?.narrative || '')}</p>
+      <div class="strategy-card" style="border-left: none; border-top: 4px solid var(--brand-charcoal);">
+        <p style="margin: 0;">${formatText(marketData.industryOverview?.narrative || '')}</p>
+      </div>
     </div>
 
     <div class="page-break">
       <h2 class="section-title">Market Sizing (TAM / SAM / SOM)</h2>
       <div class="metric-grid">
-        <div class="metric-box" style="text-align: left;">
+        <div class="metric-box" style="text-align: left; border-top-color: var(--brand-charcoal);">
           <div class="metric-box-label">TAM (Total Addressable Market)</div>
           <div class="metric-box-val">${marketData.marketSizing?.tam.value}</div>
-          <p style="font-size: 0.85rem; margin-top: 0.5rem; color: var(--mid-gray);">${marketData.marketSizing?.tam.description}</p>
+          <p style="font-size: 0.85rem; margin-top: 0.75rem; margin-bottom: 0; color: var(--brand-slate);">${marketData.marketSizing?.tam.description}</p>
         </div>
-        <div class="metric-box" style="text-align: left;">
+        <div class="metric-box" style="text-align: left; border-top-color: var(--brand-orange);">
           <div class="metric-box-label">SAM (Serviceable Addressable Market)</div>
           <div class="metric-box-val">${marketData.marketSizing?.sam.value}</div>
-          <p style="font-size: 0.85rem; margin-top: 0.5rem; color: var(--mid-gray);">${marketData.marketSizing?.sam.description}</p>
+          <p style="font-size: 0.85rem; margin-top: 0.75rem; margin-bottom: 0; color: var(--brand-slate);">${marketData.marketSizing?.sam.description}</p>
         </div>
-        <div class="metric-box" style="text-align: left;">
+        <div class="metric-box" style="text-align: left; border-top-color: var(--brand-amber);">
           <div class="metric-box-label">SOM (Serviceable Obtainable Market)</div>
           <div class="metric-box-val">${marketData.marketSizing?.som.value}</div>
-          <p style="font-size: 0.85rem; margin-top: 0.5rem; color: var(--mid-gray);">${marketData.marketSizing?.som.description}</p>
+          <p style="font-size: 0.85rem; margin-top: 0.75rem; margin-bottom: 0; color: var(--brand-slate);">${marketData.marketSizing?.som.description}</p>
         </div>
       </div>
-      <div class="sub-heading">Penetration & Est. Growth</div>
-      <p><strong>Estimated CAGR/Growth Factor:</strong> ${marketData.marketSizing?.growth_cagr}</p>
-      <p>${formatText(marketData.marketSizing?.narrative || '')}</p>
+      
+      <div class="strategy-card" style="border-left-color: var(--brand-slate);">
+        <div style="font-weight: 800; margin-bottom: 0.5rem; color: var(--brand-charcoal);">Penetration & Est. Growth</div>
+        <p style="margin-bottom: 1rem;"><strong style="color: var(--brand-orange);">Estimated CAGR/Growth Factor:</strong> <span style="font-size: 1.1rem; font-weight: 600;">${marketData.marketSizing?.growth_cagr}</span></p>
+        <p style="margin: 0;">${formatText(marketData.marketSizing?.narrative || '')}</p>
+      </div>
     </div>
 
     <div class="page-break">
@@ -411,15 +533,27 @@ export function generateHtmlDoc(options: ExportOptions): string {
         `).join('') || ''}
       </div>
       
-      <div class="sub-heading">Primary Segment: ${marketData.targetMarketSegmentation?.primary.name}</div>
-      <p>${formatText(marketData.targetMarketSegmentation?.primary.description || '')}</p>
-      <p class="text-muted">Demographics: ${marketData.targetMarketSegmentation?.primary.demographics}</p>
-      <p class="text-muted">Psychographics: ${marketData.targetMarketSegmentation?.primary.psychographics}</p>
+      <div class="strategy-card" style="border-left-color: var(--brand-charcoal);">
+        <h4 style="color: var(--brand-orange); text-transform: uppercase; font-size: 1rem; letter-spacing: 1px; margin-bottom: 0.5rem;">Primary Segment</h4>
+        <h3 style="font-size: 1.4rem; margin-bottom: 1rem; font-weight: 800;">${marketData.targetMarketSegmentation?.primary.name}</h3>
+        <p>${formatText(marketData.targetMarketSegmentation?.primary.description || '')}</p>
+        
+        <div style="background: var(--off-white); padding: 1rem; border-radius: 4px; margin-top: 1rem;">
+          <p style="margin-bottom: 0.5rem;"><strong>Demographics:</strong> ${marketData.targetMarketSegmentation?.primary.demographics}</p>
+          <p style="margin: 0;"><strong>Psychographics:</strong> ${marketData.targetMarketSegmentation?.primary.psychographics}</p>
+        </div>
+      </div>
 
-      <div class="sub-heading">Secondary Segment: ${marketData.targetMarketSegmentation?.secondary.name}</div>
-      <p>${formatText(marketData.targetMarketSegmentation?.secondary.description || '')}</p>
-      <p class="text-muted">Demographics: ${marketData.targetMarketSegmentation?.secondary.demographics}</p>
-      <p class="text-muted">Psychographics: ${marketData.targetMarketSegmentation?.secondary.psychographics}</p>
+      <div class="strategy-card" style="border-left-color: var(--brand-slate);">
+        <h4 style="color: var(--brand-amber); text-transform: uppercase; font-size: 1rem; letter-spacing: 1px; margin-bottom: 0.5rem;">Secondary Segment</h4>
+        <h3 style="font-size: 1.4rem; margin-bottom: 1rem; font-weight: 800;">${marketData.targetMarketSegmentation?.secondary.name}</h3>
+        <p>${formatText(marketData.targetMarketSegmentation?.secondary.description || '')}</p>
+        
+        <div style="background: var(--off-white); padding: 1rem; border-radius: 4px; margin-top: 1rem;">
+          <p style="margin-bottom: 0.5rem;"><strong>Demographics:</strong> ${marketData.targetMarketSegmentation?.secondary.demographics}</p>
+          <p style="margin: 0;"><strong>Psychographics:</strong> ${marketData.targetMarketSegmentation?.secondary.psychographics}</p>
+        </div>
+      </div>
     </div>
 
     <div class="page-break">
@@ -438,8 +572,8 @@ export function generateHtmlDoc(options: ExportOptions): string {
           <tbody>
             ${marketData.competitivePositioning?.competitors.map(c => `
               <tr>
-                <td style="font-weight: bold;">${c.archetype}</td>
-                <td>${c.market_share}</td>
+                <td style="font-weight: 800; color: var(--brand-orange);">${c.archetype}</td>
+                <td><span style="background: var(--light-gray); padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 0.85rem;">${c.market_share}</span></td>
                 <td>${c.price_tier}</td>
                 <td>${c.strength}</td>
                 <td>${c.weakness}</td>
@@ -448,53 +582,74 @@ export function generateHtmlDoc(options: ExportOptions): string {
           </tbody>
         </table>
       </div>
+      
       <div class="sub-heading">Strategic Moat Analysis</div>
-      <p>${formatText(marketData.competitivePositioning?.narrative || '')}</p>
+      <div class="context-block" style="border-left-color: var(--brand-charcoal); border-radius: 0;">
+        <p style="margin: 0;">${formatText(marketData.competitivePositioning?.narrative || '')}</p>
+      </div>
     </div>
 
     <div class="page-break">
       <h2 class="section-title">SWOT Analysis</h2>
       
-      <div class="sub-heading">Strengths</div>
-      <div class="table-container">
-        <table>
-          <thead><tr><th style="width: 30%">Factor</th><th>Impact / Risk</th></tr></thead>
-          <tbody>${marketData.swotAnalysis?.strengths.map(s => `<tr><td style="font-weight:bold">${s.factor}</td><td>${s.impact}</td></tr>`).join('')}</tbody>
-        </table>
-      </div>
+      <div class="swot-grid">
+        <!-- Strengths -->
+        <div class="swot-box swot-s">
+          <div class="swot-header">Strengths (Internal)</div>
+          <div class="swot-content">
+            <table class="swot-table">
+              <tbody>
+                ${marketData.swotAnalysis?.strengths.map(s => `<tr><td style="font-weight:700; width:45%;">${s.factor}</td><td style="color:var(--brand-slate);">${s.impact}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      <div class="sub-heading">Weaknesses</div>
-      <div class="table-container">
-        <table>
-          <thead><tr><th style="width: 30%">Factor</th><th>Impact / Risk</th></tr></thead>
-          <tbody>${marketData.swotAnalysis?.weaknesses.map(s => `<tr><td style="font-weight:bold">${s.factor}</td><td>${s.impact}</td></tr>`).join('')}</tbody>
-        </table>
-      </div>
+        <!-- Weaknesses -->
+        <div class="swot-box swot-w">
+          <div class="swot-header">Weaknesses (Internal)</div>
+          <div class="swot-content">
+            <table class="swot-table">
+              <tbody>
+                ${marketData.swotAnalysis?.weaknesses.map(s => `<tr><td style="font-weight:700; width:45%;">${s.factor}</td><td style="color:var(--brand-slate);">${s.impact}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      <div class="sub-heading">Opportunities</div>
-      <div class="table-container">
-        <table>
-          <thead><tr><th style="width: 30%">Factor</th><th>Impact / Risk</th></tr></thead>
-          <tbody>${marketData.swotAnalysis?.opportunities.map(s => `<tr><td style="font-weight:bold">${s.factor}</td><td>${s.impact}</td></tr>`).join('')}</tbody>
-        </table>
-      </div>
+        <!-- Opportunities -->
+        <div class="swot-box swot-o">
+          <div class="swot-header">Opportunities (External)</div>
+          <div class="swot-content">
+            <table class="swot-table">
+              <tbody>
+                ${marketData.swotAnalysis?.opportunities.map(s => `<tr><td style="font-weight:700; width:45%;">${s.factor}</td><td style="color:var(--brand-slate);">${s.impact}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      <div class="sub-heading">Threats</div>
-      <div class="table-container">
-        <table>
-          <thead><tr><th style="width: 30%">Factor</th><th>Impact / Risk</th></tr></thead>
-          <tbody>${marketData.swotAnalysis?.threats.map(s => `<tr><td style="font-weight:bold">${s.factor}</td><td>${s.impact}</td></tr>`).join('')}</tbody>
-        </table>
+        <!-- Threats -->
+        <div class="swot-box swot-t">
+          <div class="swot-header">Threats (External)</div>
+          <div class="swot-content">
+            <table class="swot-table">
+              <tbody>
+                ${marketData.swotAnalysis?.threats.map(s => `<tr><td style="font-weight:700; width:45%;">${s.factor}</td><td style="color:var(--brand-slate);">${s.impact}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="page-break">
       <h2 class="section-title">Strategic Recommendations</h2>
       ${marketData.strategicRecommendations?.map(rec => `
-        <div class="strategy-card">
-          <h4>${rec.title}</h4>
-          <div class="strategy-meta">Timeline: ${rec.timeline} | Investment: ${rec.investment}</div>
-          <ul>
+        <div class="strategy-card" style="border-left-width: 6px;">
+          <div class="strategy-meta">Timeline: ${rec.timeline} &nbsp;|&nbsp; Investment: ${rec.investment}</div>
+          <h4 style="font-size: 1.4rem; color: var(--brand-charcoal);">${rec.title}</h4>
+          <ul style="margin-top: 1rem;">
             ${rec.steps.map(step => `<li>${step}</li>`).join('')}
           </ul>
         </div>
@@ -503,7 +658,8 @@ export function generateHtmlDoc(options: ExportOptions): string {
 
     <div class="page-break">
       <h2 class="section-title">Key Performance Indicators (KPIs)</h2>
-      <p class="text-muted">The following KPIs serve as high-level benchmarks to track adoption, scale, and strategic effectiveness.</p>
+      <p class="text-muted" style="margin-bottom: 2rem;">The following KPIs serve as high-level benchmarks to track adoption, scale, and strategic effectiveness.</p>
+      
       <div class="table-container">
         <table>
           <thead>
@@ -519,12 +675,12 @@ export function generateHtmlDoc(options: ExportOptions): string {
           <tbody>
             ${marketData.kpiFramework?.map(k => `
               <tr>
-                <td style="font-weight: bold;">${k.category}</td>
-                <td style="font-weight: bold;">${k.metric}</td>
-                <td>${k.baseline}</td>
-                <td>${k.target_6m}</td>
-                <td>${k.target_12m}</td>
-                <td>${k.frequency}</td>
+                <td style="font-weight: 800; color: var(--brand-charcoal);">${k.category}</td>
+                <td style="font-weight: 600; color: var(--brand-slate);">${k.metric}</td>
+                <td><span style="background: var(--off-white); padding: 4px 8px; border-radius: 4px;">${k.baseline}</span></td>
+                <td><span style="background: rgba(255,179,0,0.15); color: #B37D00; padding: 4px 8px; border-radius: 4px; font-weight: 600;">${k.target_6m}</span></td>
+                <td><span style="background: rgba(255,90,0,0.15); color: #CC4800; padding: 4px 8px; border-radius: 4px; font-weight: 600;">${k.target_12m}</span></td>
+                <td style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">${k.frequency}</td>
               </tr>
             `).join('') || ''}
           </tbody>
@@ -539,14 +695,14 @@ export function generateHtmlDoc(options: ExportOptions): string {
     <!-- REFERENCE APPENDIX -->
     <div class="page-break">
       <h2 class="section-title">VMV8 Competitive Advantage Reference</h2>
-      <p class="text-muted">The Superpower is the unique differentiator that makes a brand extraordinary. It is derived from the intersection of Purpose + USP. Below are the finite competitive advantage options from the VMV8 framework.</p>
+      <p class="text-muted" style="margin-bottom: 2rem;">The Superpower is the unique differentiator that makes a brand extraordinary. It is derived from the intersection of Purpose + USP. Below are the finite competitive advantage options from the VMV8 framework.</p>
       
       <div class="sub-heading">Ancient Tactics</div>
       <div class="table-container">
         <table>
           <thead><tr><th style="width:30%">Competitive Advantage</th><th>Description</th></tr></thead>
           <tbody>
-            ${SUPERPOWER_TACTICS.ancient.map(t => `<tr><td class="col-field">${t.name}</td><td>${t.desc}</td></tr>`).join('')}
+            ${SUPERPOWER_TACTICS.ancient.map(t => `<tr><td class="col-field" style="color: var(--brand-orange);">${t.name}</td><td>${t.desc}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -556,7 +712,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
         <table>
           <thead><tr><th style="width:30%">Competitive Advantage</th><th>Description</th></tr></thead>
           <tbody>
-            ${SUPERPOWER_TACTICS.postDigital.map(t => `<tr><td class="col-field">${t.name}</td><td>${t.desc}</td></tr>`).join('')}
+            ${SUPERPOWER_TACTICS.postDigital.map(t => `<tr><td class="col-field" style="color: var(--brand-amber);">${t.name}</td><td>${t.desc}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -564,12 +720,13 @@ export function generateHtmlDoc(options: ExportOptions): string {
 
     <div class="page-break">
       <h2 class="section-title">Archetype Reference Guide</h2>
-      <p class="text-muted">The 12 brand archetypes define a brand's voice, tone, and emotional resonance. Each archetype maps to a unique Archetone — the emotional signature derived from Plutchik's Emotion Wheel.</p>
+      <p class="text-muted" style="margin-bottom: 2rem;">The 12 brand archetypes define a brand's voice, tone, and emotional resonance. Each archetype maps to a unique Archetone — the emotional signature derived from Plutchik's Emotion Wheel.</p>
+      
       <div class="table-container">
         <table>
           <thead><tr><th style="width:30%">Archetype</th><th>Description & Archetone</th></tr></thead>
           <tbody>
-            ${Object.entries(ARCHETYPE_DESCRIPTIONS).map(([name, desc]) => `<tr><td class="col-field">${name}</td><td>${desc}</td></tr>`).join('')}
+            ${Object.entries(ARCHETYPE_DESCRIPTIONS).map(([name, desc]) => `<tr><td class="col-field" style="color: var(--brand-charcoal);">${name}</td><td>${desc}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
