@@ -133,5 +133,6 @@ export async function getActivityStats(userId: string): Promise<{
     pdfUploads: data.filter(r => r.type === 'pdf_upload').length,
     logins: data.filter(r => r.type === 'login').length,
     totalActivity: data.length,
+    storageUsedBytes: storageSum,
   };
 }

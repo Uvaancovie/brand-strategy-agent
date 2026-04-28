@@ -12,7 +12,7 @@ inject();
 import { FRAMEWORK, type ChatMessage } from './config/framework';
 
 // Store
-import { state, saveSession, loadSession, clearSession, getFilledCount, getProgressStats, hasExistingData } from './store/brandscript.store';
+import { state, saveSession, loadSession, clearSession, getFilledCount, getProgressStats, hasExistingData, scheduleSaveToSupabase, loadFromSupabase } from './store/brandscript.store';
 
 // Services
 import { callGroq } from './services/groq.service';
@@ -22,10 +22,13 @@ import { scrapeContextSources } from './services/scrape.service';
 import { processCSVFile } from './services/csv.service';
 import { supabase, getCurrentSession, setupAuthListener } from './services/supabase.service';
 import { getProfile, upsertProfile, uploadAvatar, logActivity, getActivity, getActivityStats } from './services/profile.service';
-import { generateMarketData } from './services/market.service';
+import { generateMarketData, type GenerateMarketDataResult } from './services/market.service';
+import { saveBrandscriptToSupabase } from './services/brandscript.service';
+import { saveMarketResearch, saveDocumentExport } from './services/brandscript.service';
 import { generateHtmlDoc } from './services/html-export.service';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import type { ContextPanel } from './store/brandscript.store';
 pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl;
 
 // Components
@@ -63,6 +66,8 @@ const processingOverlay = document.getElementById('processing-overlay')!;
 const processingTitle = document.getElementById('processing-title')!;
 const processingSubtitle = document.getElementById('processing-subtitle')!;
 const processingProgressBar = document.getElementById('processing-progress-bar')!;
+const processingPct = document.getElementById('processing-pct')!;
+const processingSteps = document.getElementById('processing-steps')!;
 
 // CSV elements
 const btnCsvUpload  = document.getElementById('btn-csv-upload') as HTMLButtonElement;
@@ -129,20 +134,11 @@ const avatarInput = document.getElementById('avatar-input') as HTMLInputElement;
 const profileActivityFeed = document.getElementById('profile-activity-feed')!;
 let currentUserId: string | null = null;
 
-interface ContextPanel {
-  title: string;
-  subtitle: string;
-  body: string;
-}
-
-let collectedContextPayload = '';
-let collectedContextOverview = '';
-let collectedContextPanels: ContextPanel[] = [];
 let rightPanelView: 'brandscript' | 'context' = 'brandscript';
 
 function setRightPanelView(view: 'brandscript' | 'context'): void {
   rightPanelView = view;
-  const hasContext = !!collectedContextOverview && collectedContextPanels.length > 0;
+  const hasContext = !!state.contextOverview && state.contextPanels.length > 0;
 
   if (view === 'context' && hasContext) {
     contextSummaryPanel.classList.remove('hidden');
@@ -283,7 +279,7 @@ async function handleUserInput(text: string): Promise<void> {
 
   try {
     // JSON mode call — returns typed { message, extractions }
-    const response = await callGroq(text, 2, collectedContextPayload);
+    const response = await callGroq(text, 2, state.contextPayload);
 
     removeTyping();
 
@@ -314,6 +310,7 @@ async function handleUserInput(text: string): Promise<void> {
 
   refreshUI();
   saveSession();
+  if (currentUserId) scheduleSaveToSupabase(currentUserId);
 }
 
 // ─── MESSAGE HELPER ─────────────────────────────────────────────────
@@ -345,40 +342,52 @@ function escapeHtml(text: string): string {
 }
 
 function renderContextSummary(overview: string, panels: ContextPanel[]): void {
-  if (!overview || panels.length === 0) {
-    navContextSummary.classList.add('hidden');
-    contextSummaryOverview.textContent = '';
-    contextSummaryPanels.innerHTML = '';
-    setRightPanelView('brandscript');
-    return;
-  }
+  // Premium overview card
+  contextSummaryOverview.innerHTML = `
+    <div class="ctx-summary-glass">
+      <div class="ctx-summary-header">
+        <div class="ctx-summary-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+          </svg>
+        </div>
+        <h3>Strategic Context</h3>
+      </div>
+      <div class="ctx-summary-text">${escapeHtml(overview)}</div>
+    </div>
+  `;
 
-  navContextSummary.classList.remove('hidden');
-  contextSummaryOverview.textContent = overview;
-
-  contextSummaryPanels.innerHTML = panels.map(panel => {
+  // Premium panels
+  contextSummaryPanels.innerHTML = panels.map((panel, idx) => {
     return `
-      <details class="context-preview-panel">
+      <details class="context-preview-panel" ${idx === 0 ? 'open' : ''}>
         <summary>
-          <span class="context-preview-title">${escapeHtml(panel.title)}</span>
-          <span class="context-preview-subtitle">${escapeHtml(panel.subtitle)}</span>
+          <div class="ctx-panel-header">
+            <span class="ctx-panel-title">${escapeHtml(panel.title)}</span>
+            <span class="ctx-panel-subtitle">${escapeHtml(panel.subtitle)}</span>
+          </div>
+          <svg class="ctx-panel-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
         </summary>
-        <div class="context-preview-body">${escapeHtml(panel.body)}</div>
+        <div class="context-preview-body">
+          <div class="ctx-body-content">${escapeHtml(panel.body)}</div>
+        </div>
       </details>
     `;
   }).join('');
 }
 
 function clearCollectedContext(): void {
-  collectedContextPayload = '';
-  collectedContextOverview = '';
-  collectedContextPanels = [];
+  state.contextPayload = '';
+  state.contextOverview = '';
+  state.contextPanels = [];
   renderContextSummary('', []);
 }
 
 function openContextSummaryPanel(): void {
-  if (!collectedContextOverview || collectedContextPanels.length === 0) return;
-  renderContextSummary(collectedContextOverview, collectedContextPanels);
+  if (!state.contextOverview || state.contextPanels.length === 0) return;
+  renderContextSummary(state.contextOverview, state.contextPanels);
   setRightPanelView('context');
   contextSummaryPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -393,6 +402,20 @@ async function handleContextIngestion(): Promise<void> {
   const services = ctxServices.value.trim();
   const country = ctxCountry.value.trim();
 
+  // Country, Industry, and Profession are ALWAYS compulsory
+  const missing: string[] = [];
+  if (!country) missing.push('Country');
+  if (!industry) missing.push('Industry');
+  if (!profession) missing.push('Profession');
+
+  if (missing.length > 0) {
+    addSystemMessage({
+      role: 'agent',
+      content: `⚠️ Please select your **${missing.join(', ')}** — these are required for accurate market research in your B.I.G Doc.`,
+    });
+    return;
+  }
+
   if (!websiteUrl && !linkedinUrl && !noWebsite) {
     addSystemMessage({
       role: 'agent',
@@ -401,21 +424,11 @@ async function handleContextIngestion(): Promise<void> {
     return;
   }
 
-  if (noWebsite) {
-    const missing: string[] = [];
-    if (!industry) missing.push('Industry');
-    if (!profession) missing.push('Profession');
-    if (!services) missing.push('Services offered');
-    if (!country) missing.push('Country');
-
-    if (missing.length > 0) {
-      addSystemMessage({
-        role: 'agent',
-        content: `For businesses without a website, please complete: **${missing.join(', ')}**.`,
-      });
-      return;
-    }
-  }
+  // Save user context to state
+  state.userContext = { country, industry, profession, services };
+  state.contextPayload = '';
+  state.contextOverview = '';
+  state.contextPanels = [];
 
   clearCollectedContext();
   btnUseContext.disabled = true;
@@ -481,17 +494,17 @@ async function handleContextIngestion(): Promise<void> {
       return;
     }
 
-    collectedContextPayload = usableContext;
+    state.contextPayload = usableContext;
     const uniqueSources = Array.from(new Set(sourceLabels));
     const overview = `Generated overview from ${uniqueSources.length} source${uniqueSources.length === 1 ? '' : 's'} (${uniqueSources.join(', ')}), with about ${totalChars.toLocaleString()} characters of usable context. Click any panel to preview details. This context is now used as reference for future framework answers.`;
-    collectedContextOverview = overview;
-    collectedContextPanels = contextPanels.map(panel => ({
+    state.contextOverview = overview;
+    state.contextPanels = contextPanels.map(panel => ({
       ...panel,
       body: summarizeContext(panel.body, 1800),
     }));
 
     setContextLoading(false);
-    renderContextSummary(collectedContextOverview, collectedContextPanels);
+    renderContextSummary(state.contextOverview, state.contextPanels);
     openContextSummaryPanel();
 
     addSystemMessage({
@@ -597,6 +610,16 @@ setupAuthListener(async (session) => {
     const profile = await getProfile(session.user.id);
     const initials = getInitials(profile?.display_name || null, session.user.email || null);
     setAvatarUI(profile?.avatar_url || null, initials);
+    // Load brandscript from Supabase and merge with local
+    const loaded = await loadFromSupabase(session.user.id);
+    if (loaded) {
+      // Restore context dropdowns from Supabase data
+      if (state.userContext.country && ctxCountry) ctxCountry.value = state.userContext.country;
+      if (state.userContext.industry && ctxIndustry) ctxIndustry.value = state.userContext.industry;
+      if (state.userContext.profession && ctxProfession) ctxProfession.value = state.userContext.profession;
+      if (state.userContext.services && ctxServices) ctxServices.value = state.userContext.services;
+      refreshUI();
+    }
     // Log login event
     await logActivity(session.user.id, 'login', 'Signed in', session.user.email || '');
   } else {
@@ -609,10 +632,10 @@ setupAuthListener(async (session) => {
 
 function updateCtxMeta() {
   const len = contextPageEdit.value.length;
-  const sources = collectedContextPanels.length;
+  const sources = state.contextPanels.length;
   ctxCharCount.textContent = `${len.toLocaleString()} chars`;
   contextEditorMeta.innerHTML = sources > 0
-    ? collectedContextPanels.map(p =>
+    ? state.contextPanels.map(p =>
         `<span class="ctx-meta-pill">📄 ${p.title} <small style="opacity:0.6">${p.subtitle}</small></span>`
       ).join('')
     : '<span style="color:var(--text-muted)">No sources collected yet.</span>';
@@ -630,13 +653,13 @@ ctxClearBtn.addEventListener('click', () => {
 });
 
 btnContextSave.addEventListener('click', () => {
-  collectedContextPayload = contextPageEdit.value.trim();
-  const len = collectedContextPayload.length;
-  collectedContextOverview = `Edited context summary — ${len.toLocaleString()} characters, ${collectedContextPanels.length} source(s).`;
-  renderContextSummary(collectedContextOverview, collectedContextPanels.length > 0 ? collectedContextPanels : [{
+  state.contextPayload = contextPageEdit.value.trim();
+  const len = state.contextPayload.length;
+  state.contextOverview = `Edited context summary — ${len.toLocaleString()} characters, ${state.contextPanels.length} source(s).`;
+  renderContextSummary(state.contextOverview, state.contextPanels.length > 0 ? state.contextPanels : [{
     title: 'Edited Context',
     subtitle: 'Manually edited by user',
-    body: summarizeContext(collectedContextPayload, 1800)
+    body: summarizeContext(state.contextPayload, 1800)
   }]);
   contextPage.classList.add('hidden');
   addSystemMessage({ role: 'agent', content: `✅ Context saved — **${len.toLocaleString()} characters** of context will be used by Brandy.` });
@@ -677,7 +700,7 @@ btnUseContext.addEventListener('click', () => {
 });
 
 navContextSummary.addEventListener('click', () => {
-  contextPageEdit.value = collectedContextPayload;
+  contextPageEdit.value = state.contextPayload;
   updateCtxMeta();
   contextPage.classList.remove('hidden');
 });
@@ -693,6 +716,55 @@ btnReset.addEventListener('click', () => {
   }
 });
 
+// ─── PROCESSING OVERLAY HELPERS ─────────────────────────────────────
+
+let currentStepEl: HTMLElement | null = null;
+
+function updateProgress(pct: number, subtitle?: string): void {
+  const clamped = Math.min(100, Math.max(0, Math.round(pct)));
+  processingPct.textContent = `${clamped}%`;
+  processingProgressBar.style.width = `${clamped}%`;
+  if (subtitle) processingSubtitle.textContent = subtitle;
+}
+
+function addProcessingStep(text: string, pct?: number): void {
+  // Mark previous step as done
+  if (currentStepEl) {
+    currentStepEl.classList.remove('active');
+    currentStepEl.classList.add('done');
+    const icon = currentStepEl.querySelector('.processing-step-icon');
+    if (icon) icon.textContent = '✓';
+  }
+  // Create new active step
+  const step = document.createElement('div');
+  step.className = 'processing-step active';
+  step.innerHTML = `
+    <div class="processing-step-icon">●</div>
+    <div class="processing-step-text">${text}</div>
+    ${pct !== undefined ? `<div class="processing-step-pct">${Math.round(pct)}%</div>` : ''}
+  `;
+  processingSteps.appendChild(step);
+  processingSteps.scrollTop = processingSteps.scrollHeight;
+  currentStepEl = step;
+}
+
+function completeAllSteps(): void {
+  if (currentStepEl) {
+    currentStepEl.classList.remove('active');
+    currentStepEl.classList.add('done');
+    const icon = currentStepEl.querySelector('.processing-step-icon');
+    if (icon) icon.textContent = '✓';
+    currentStepEl = null;
+  }
+}
+
+function resetProcessingOverlay(): void {
+  processingSteps.innerHTML = '';
+  currentStepEl = null;
+  processingPct.textContent = '0%';
+  processingProgressBar.style.width = '0%';
+}
+
 // ─── DOWNLOAD B.I.G DOC PDF ─────────────────────────────────────────
 
 btnDownloadPdf.addEventListener('click', async () => {
@@ -705,43 +777,75 @@ btnDownloadPdf.addEventListener('click', async () => {
     return;
   }
 
-  // Detect country from context inputs or finance field
-  const countryEl = document.getElementById('ctx-country') as HTMLSelectElement | null;
-  const country = countryEl?.value || state.brandscript.administration?.finance || 'South Africa';
+  // Get country/industry/profession from state or DOM fallback
+  const country = state.userContext.country || ctxCountry.value.trim() || 'South Africa';
+  const industry = state.userContext.industry || ctxIndustry.value.trim() || '';
+  const profession = state.userContext.profession || ctxProfession.value.trim() || '';
+  const services = state.userContext.services || ctxServices.value.trim() || '';
+
+  if (!country || !industry || !profession) {
+    addSystemMessage({
+      role: 'agent',
+      content: '⚠️ Please select your **Country**, **Industry**, and **Profession** in the Context Sources panel before generating your B.I.G Doc. This data is needed for accurate market research.',
+    });
+    return;
+  }
 
   // Disable button and show generating state
   btnDownloadPdf.disabled = true;
   const originalLabel = btnDownloadPdf.innerHTML;
   btnDownloadPdf.innerHTML = `
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-    Generating market data...`;
+    Researching market...`;
 
-  // Show processing overlay
-  processingTitle.textContent = 'Generating Market Intelligence';
-  processingSubtitle.textContent = 'Analyzing your brand data with AI...';
-  processingProgressBar.style.width = '20%';
+  // Reset and show processing overlay
+  resetProcessingOverlay();
+  processingTitle.textContent = 'Researching Your Market';
+  processingSubtitle.textContent = `Preparing market research for ${industry} in ${country}...`;
   processingOverlay.classList.remove('hidden');
+  updateProgress(2);
+  addProcessingStep(`Initializing research for ${country}`, 2);
 
   try {
-    // 1. Generate market data with AI
-    const marketData = await generateMarketData(collectedContextPayload);
+    // 1. Generate market data with Firecrawl search + AI synthesis
+    addProcessingStep('Connecting to Firecrawl search engine...', 5);
+    updateProgress(5);
 
-    // Update overlay
+    const result: GenerateMarketDataResult = await generateMarketData({
+      brandContext: state.contextPayload,
+      country,
+      industry,
+      profession,
+      services,
+      onProgress: (step, pct) => {
+        const totalPct = Math.round(5 + pct * 0.6); // 5% → 65%
+        updateProgress(totalPct, step);
+        addProcessingStep(step, totalPct);
+      },
+    });
+
+    const { marketData, firecrawlResults } = result;
+    const sourceCount = firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0);
+
+    // Phase 2: Building the report
     processingTitle.textContent = 'Building Your Report';
-    processingSubtitle.textContent = 'Assembling B.I.G HTML Doc with market intelligence...';
-    processingProgressBar.style.width = '70%';
+    addProcessingStep(`${sourceCount} web sources collected — assembling B.I.G Doc...`, 70);
+    updateProgress(70, 'Generating HTML report with market intelligence...');
 
-    // Small delay so the user sees the progress update
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 500));
 
     // 2. Generate and download the HTML
+    addProcessingStep('Rendering B.I.G Doc with brand strategy + market data...', 75);
+    updateProgress(75);
     const htmlReport = generateHtmlDoc({
       brandscript: state.brandscript,
-      contextPayload: collectedContextPayload,
+      contextPayload: state.contextPayload,
       marketData,
     });
     
     // Create Blob and trigger download
+    addProcessingStep('Preparing download file...', 82);
+    updateProgress(82);
     const blob = new Blob([htmlReport], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -751,37 +855,80 @@ btnDownloadPdf.addEventListener('click', async () => {
     const formattedDate = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
     const bName = state.brandscript.name?.purpose?.split('.')[0]?.trim() || 'Your Brand';
     const safeName = bName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+$/g, '');
+    const fileName = `BIG-Doc-${safeName}-${formattedDate}.html`;
     
-    a.download = `BIG-Doc-${safeName}-${formattedDate}.html`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    processingProgressBar.style.width = '100%';
+    addProcessingStep('File downloaded successfully ✓', 88);
+    updateProgress(88);
+
+    // 3. Save to Supabase (market research + document export)
+    if (currentUserId) {
+      addProcessingStep('Saving market research to database...', 90);
+      updateProgress(90);
+
+      // Save market research
+      const mrResult = await saveMarketResearch({
+        user_id: currentUserId,
+        country,
+        industry,
+        profession,
+        firecrawl_results: firecrawlResults,
+        market_data: marketData,
+      });
+
+      addProcessingStep('Saving document snapshot...', 95);
+      updateProgress(95);
+
+      // Save document export snapshot
+      await saveDocumentExport({
+        user_id: currentUserId,
+        market_research_id: mrResult?.id || undefined,
+        brand_name: bName,
+        brandscript_snapshot: state.brandscript,
+        market_data_snapshot: marketData,
+        context_snapshot: state.contextPayload,
+        file_name: fileName,
+      });
+    }
+
+    // Complete!
+    processingTitle.textContent = 'Report Complete!';
+    addProcessingStep(`B.I.G Doc generated with ${sourceCount} real sources`, 100);
+    updateProgress(100, 'Your market-researched brand strategy document is ready.');
+    completeAllSteps();
+
+    const sourceMsg = sourceCount > 0
+      ? ` Research was grounded in **${sourceCount} real web sources** specific to ${country}.`
+      : '';
 
     addSystemMessage({
       role: 'agent',
-      content: '📥 **B.I.G Doc HTML report downloaded!** Your document includes your brand strategy framework and AI-generated market intelligence. You can open it in any browser and print it to PDF.',
+      content: `📥 **B.I.G Doc HTML report downloaded!** Your document includes your brand strategy framework and market intelligence for **${industry}** in **${country}**.${sourceMsg} Open it in any browser and print to PDF.`,
     });
 
     // Log activity
     if (currentUserId) {
-      logActivity(currentUserId, 'pdf_upload', 'B.I.G Doc HTML exported', 'HTML with market data');
+      logActivity(currentUserId, 'pdf_upload', 'B.I.G Doc HTML exported', `${country} · ${industry} · ${sourceCount} sources`);
     }
 
   } catch (err) {
     console.error('PDF generation error:', err);
+    completeAllSteps();
     addSystemMessage({
       role: 'agent',
       content: `⚠️ **PDF Generation Failed**\n\n${(err as Error).message || 'Something went wrong. Please try again.'}`,
     });
   } finally {
-    // Reset button and hide overlay
+    // Reset button and hide overlay after a short delay
     setTimeout(() => {
       processingOverlay.classList.add('hidden');
-      processingProgressBar.style.width = '0%';
-    }, 800);
+      resetProcessingOverlay();
+    }, 1200);
     btnDownloadPdf.disabled = false;
     btnDownloadPdf.innerHTML = originalLabel;
   }
@@ -910,16 +1057,16 @@ async function processPdfFile(file: File) {
     }
     
     // Save as context
-    collectedContextPayload += "\\n\\n### IMPORTED PDF: " + file.name + "\\n" + fullText;
-    collectedContextOverview = `Added imported PDF "${file.name}" to context.`;
-    collectedContextPanels.push({
+    state.contextPayload += "\\n\\n### IMPORTED PDF: " + file.name + "\\n" + fullText;
+    state.contextOverview = `Added imported PDF "${file.name}" to context.`;
+    state.contextPanels.push({
       title: 'PDF Document',
       subtitle: file.name,
       body: summarizeContext(fullText, 1800)
     });
     
     // Refresh context summary UI
-    renderContextSummary(collectedContextOverview, collectedContextPanels);
+    renderContextSummary(state.contextOverview, state.contextPanels);
     
     addSystemMessage({ 
       role: 'agent', 
@@ -1267,4 +1414,3 @@ btnSignout.addEventListener('click', async () => {
   profilePage.classList.add('hidden');
   currentUserId = null;
 });
-

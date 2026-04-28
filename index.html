@@ -511,7 +511,7 @@
       </div>
     </div>
 
-    <!-- Processing Overlay (for file uploads) -->
+    <!-- Processing Overlay (Market Research + PDF Generation) -->
     <div class="processing-overlay" id="processing-overlay">
       <div class="processing-inner">
         <div class="processing-spinner-ring"></div>
@@ -523,10 +523,18 @@
             <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
         </div>
-        <div class="processing-title" id="processing-title">Processing Audio</div>
-        <div class="processing-subtitle" id="processing-subtitle">Transcribing with Whisper AI...</div>
+
+        <div class="processing-pct" id="processing-pct">0%</div>
+        <div class="processing-title" id="processing-title">Researching Your Market</div>
+        <div class="processing-subtitle" id="processing-subtitle">Initializing market research...</div>
+
         <div class="processing-progress">
           <div class="processing-progress-bar" id="processing-progress-bar"></div>
+        </div>
+
+        <!-- Live step log -->
+        <div class="processing-steps" id="processing-steps">
+          <!-- Steps added dynamically by JS -->
         </div>
       </div>
     </div>

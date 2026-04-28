@@ -45,6 +45,7 @@ const SUPERPOWER_TACTICS = {
 function formatText(text: string) {
   if (!text) return '';
   return text
+    .replace(/### ([^\n\r]+)/g, '<h4 class="context-subheading">$1</h4>')
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\n\n/g, '</p><p>')
     .replace(/\n/g, '<br>')
@@ -217,6 +218,26 @@ export function generateHtmlDoc(options: ExportOptions): string {
     
     .text-muted { color: var(--mid-gray); font-style: italic; font-size: 0.9rem; }
     
+    /* Context Styling */
+    .context-subheading {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--black);
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      border-bottom: 1px solid var(--light-gray);
+      padding-bottom: 0.25rem;
+    }
+    .context-block {
+      background: var(--off-white);
+      border-left: 4px solid var(--black);
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+    }
+    
     /* Grids & Cards */
     .metric-grid {
       display: flex;
@@ -335,7 +356,9 @@ export function generateHtmlDoc(options: ExportOptions): string {
     <!-- CONTEXT SUMMARY -->
     <div class="page-break">
       <h2 class="section-title">Strategic Context</h2>
-      <p style="font-size: 0.9rem; white-space: pre-wrap;">${contextPayload ? formatText(truncate(contextPayload, 3500)) : '<em class="text-muted">No external context was provided for this baseline document.</em>'}</p>
+      ${contextPayload 
+        ? `<div class="context-block"><p style="margin: 0;">${formatText(truncate(contextPayload, 3500))}</p></div>` 
+        : '<p><em class="text-muted">No external context was provided for this baseline document.</em></p>'}
     </div>
 
     <!-- MARKET INTELLIGENCE -->
