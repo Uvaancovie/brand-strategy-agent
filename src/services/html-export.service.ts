@@ -98,13 +98,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
   }).join('');
 
   return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BIG Doc: ${resolvedBrandName}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800;900&display=swap" rel="stylesheet">
+<div id="pdf-export-container" style="background: white; color: #1A1A1A; font-family: 'Inter', sans-serif;">
   <style>
     /* PREMIUM CORPORATE STYLES - VOLCANIC ORANGE, CHARCOAL & AMBER */
     :root {
@@ -124,31 +118,18 @@ export function generateHtmlDoc(options: ExportOptions): string {
 
     * { box-sizing: border-box; }
 
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: var(--font-sans);
-      color: var(--brand-charcoal);
-      background-color: var(--light-gray);
-      line-height: 1.6;
-    }
-
     .document {
-      max-width: 210mm;
+      width: 210mm;
       margin: 0 auto;
       background: var(--white);
-      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-      padding: 20mm;
+      padding: 15mm;
+      color: var(--brand-charcoal);
+      line-height: 1.6;
     }
     
-    @media screen {
-      .page-break { margin-bottom: 3rem; border-bottom: 2px solid var(--light-gray); padding-bottom: 3rem; }
-    }
-
-    @media print {
-      body { background: var(--white); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .document { max-width: 100%; box-shadow: none; padding: 0; margin: 0; }
-      .page-break { page-break-before: always; margin-top: 15mm; }
+    .page-break { 
+      page-break-before: always; 
+      margin-top: 15mm;
     }
 
     h1, h2, h3, h4 { font-family: var(--font-sans); color: var(--brand-charcoal); margin-top: 0; }
@@ -296,8 +277,8 @@ export function generateHtmlDoc(options: ExportOptions): string {
     /* Grids & Cards */
     .metric-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 1.5rem;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
       margin-bottom: 2rem;
     }
     .metric-box {
@@ -438,8 +419,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
     .swot-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--light-gray); font-size: 0.9rem; }
     .swot-table tr:last-child td { border-bottom: none; }
   </style>
-</head>
-<body>
+
   <div class="document">
     
     <!-- COVER PAGE -->
@@ -737,7 +717,6 @@ export function generateHtmlDoc(options: ExportOptions): string {
     </div>
 
   </div>
-</body>
-</html>
+</div>
   `;
 }

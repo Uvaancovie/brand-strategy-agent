@@ -26,6 +26,7 @@ import { generateMarketData, type GenerateMarketDataResult } from './services/ma
 import { saveBrandscriptToSupabase } from './services/brandscript.service';
 import { saveMarketResearch, saveDocumentExport } from './services/brandscript.service';
 import { generateHtmlDoc } from './services/html-export.service';
+import html2pdf from 'html2pdf.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ContextPanel } from './store/brandscript.store';
@@ -846,22 +847,23 @@ btnDownloadPdf.addEventListener('click', async () => {
     // Create Blob and trigger download
     addProcessingStep('Preparing download file...', 82);
     updateProgress(82);
-    const blob = new Blob([htmlReport], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
+    
     
     const now = new Date();
     const formattedDate = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
     const bName = state.brandscript.name?.purpose?.split('.')[0]?.trim() || 'Your Brand';
     const safeName = bName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+$/g, '');
-    const fileName = `BIG-Doc-${safeName}-${formattedDate}.html`;
+    const fileName = `BIG-Doc-${safeName}-${formattedDate}.pdf`;
     
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const opt = {
+      margin:       0,
+      filename:     fileName,
+      image:        { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' } as any
+    };
+
+    await html2pdf().set(opt).from(htmlReport).save();
 
     addProcessingStep('File downloaded successfully ✓', 88);
     updateProgress(88);
