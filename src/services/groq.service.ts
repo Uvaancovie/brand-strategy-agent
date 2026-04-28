@@ -54,7 +54,7 @@ export async function callGroq(userText: string, retries = 2, referenceContext =
   try {
     const chatCompletion = await groq.chat.completions.create({
       messages,
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama3-8b-8192',
       response_format: { type: 'json_object' },
     });
 
