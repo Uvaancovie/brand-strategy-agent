@@ -27,8 +27,16 @@ function buildBrandscriptContext(): string {
 // ─── CHAT COMPLETION (JSON MODE) ────────────────────────────────────
 
 export async function callGroq(userText: string, retries = 2, referenceContext = ''): Promise<AgentResponse> {
-  const referenceInjection = referenceContext.trim()
-    ? `\n\n## COLLECTED BUSINESS CONTEXT (REFERENCE ONLY):\n${referenceContext}\n\nUse this only as supporting context for responses. Do not proactively fill framework fields unless the user explicitly asks to extract or refine section answers in their current message.`
+  // Truncate reference context to prevent exceeding token limits (e.g., 12000 TPM limit on Groq)
+  // We keep the last 20000 characters to prioritize most recently added context.
+  const MAX_REF_LENGTH = 20000;
+  let trimmedReference = referenceContext.trim();
+  if (trimmedReference.length > MAX_REF_LENGTH) {
+    trimmedReference = '...[earlier context truncated]...\\n' + trimmedReference.slice(-MAX_REF_LENGTH);
+  }
+
+  const referenceInjection = trimmedReference
+    ? `\\n\\n## COLLECTED BUSINESS CONTEXT (REFERENCE ONLY):\\n${trimmedReference}\\n\\nUse this only as supporting context for responses. Do not proactively fill framework fields unless the user explicitly asks to extract or refine section answers in their current message.`
     : '';
 
   const contextInjection = `\n\n---\n## CURRENT B.I.G DOC STATUS:\n${buildBrandscriptContext()}${referenceInjection}\n---\n`;
