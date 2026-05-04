@@ -108,13 +108,26 @@ Provide a clear, structured analytics report including:
 
 Use markdown formatting. Be concise but insightful. If the data looks like social media analytics, website traffic, sales data, or ad performance — say so explicitly and tailor your insights accordingly.`;
 
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
-    messages: [{ role: 'user', content: prompt }],
-    max_tokens: 1800,
-  });
-
-  return completion.choices[0]?.message?.content?.trim() || 'No insights generated.';
+  let retries = 2;
+  while (retries >= 0) {
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.1-8b-instant', // Switched from 70B to 8B to avoid 429 rate limits
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2048,
+      });
+      return completion.choices[0]?.message?.content?.trim() || 'No insights generated.';
+    } catch (err: any) {
+      if (retries > 0 && (err.message.includes('429') || err.message.includes('rate_limit_exceeded'))) {
+        console.warn(`CSV Analysis rate limit hit. Retrying in 3s... (${retries} left)`);
+        await new Promise(res => setTimeout(res, 3000));
+        retries--;
+        continue;
+      }
+      throw err;
+    }
+  }
+  return 'Failed to generate insights due to rate limits.';
 }
 
 // ─── MAIN ENTRY: PROCESS CSV FILE ────────────────────────────────────

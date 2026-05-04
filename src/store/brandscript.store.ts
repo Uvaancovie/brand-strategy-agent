@@ -24,6 +24,20 @@ export interface ContextPanel {
   body: string;
 }
 
+export interface Transcript {
+  id: string;
+  name: string;
+  description: string;
+  text: string;
+  source: 'upload' | 'recording';
+  fileName?: string;
+  durationSeconds?: number;
+  addedToContext: boolean;
+  addedToDoc: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   activeSection: number;
   messages: ChatMessage[];
@@ -34,6 +48,8 @@ export interface AppState {
   contextPayload: string;
   contextOverview: string;
   contextPanels: ContextPanel[];
+  transcripts: Transcript[];
+  recordingSessionCount: number;
 }
 
 function createEmptyBrandscript(): BrandScript {
@@ -62,6 +78,8 @@ export const state: AppState = {
   contextPayload: '',
   contextOverview: '',
   contextPanels: [],
+  transcripts: [],
+  recordingSessionCount: 0,
 };
 
 // ─── PERSISTENCE ────────────────────────────────────────────────────
@@ -77,6 +95,8 @@ export function saveSession(): void {
       contextPayload: state.contextPayload,
       contextOverview: state.contextOverview,
       contextPanels: state.contextPanels,
+      transcripts: state.transcripts,
+      recordingSessionCount: state.recordingSessionCount,
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -175,6 +195,8 @@ export function loadSession(): boolean {
     if (data.contextPayload) state.contextPayload = data.contextPayload;
     if (data.contextOverview) state.contextOverview = data.contextOverview;
     if (data.contextPanels) state.contextPanels = data.contextPanels;
+    if (data.transcripts) state.transcripts = data.transcripts;
+    if (data.recordingSessionCount !== undefined) state.recordingSessionCount = data.recordingSessionCount;
     return true;
   } catch (e) {
     console.warn('Session load failed:', e);
@@ -192,6 +214,8 @@ export function clearSession(): void {
   state.contextPayload = '';
   state.contextOverview = '';
   state.contextPanels = [];
+  state.transcripts = [];
+  state.recordingSessionCount = 0;
   localStorage.removeItem(STORAGE_KEY);
 }
 
