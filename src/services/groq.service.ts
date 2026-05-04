@@ -8,7 +8,12 @@ import { FRAMEWORK, type AgentResponse, type Extraction } from '../config/framew
 import { state, getTrimmedHistory } from '../store/brandscript.store';
 
 const API_KEY = import.meta.env.VITE_GROQ_API_KEY;
-export const groq = new Groq({ apiKey: API_KEY, dangerouslyAllowBrowser: true });
+export const groq = new Groq({ 
+  apiKey: API_KEY, 
+  dangerouslyAllowBrowser: true,
+  timeout: 5 * 60 * 1000, // 5 minute timeout per request
+  maxRetries: 2
+});
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -108,11 +113,11 @@ function parseAgentResponse(raw: string): AgentResponse {
 // ─── AUDIO TRANSCRIPTION ────────────────────────────────────────────
 
 export async function transcribeAudio(file: File): Promise<string> {
-  const transcription = await groq.audio.transcriptions.create({
+  const translation = await groq.audio.translations.create({
     file,
-    model: 'whisper-large-v3-turbo',
+    model: 'whisper-large-v3',
     temperature: 0,
     response_format: 'json',
   });
-  return (transcription.text || '').trim();
+  return (translation.text || '').trim();
 }

@@ -160,12 +160,17 @@ export async function startRecording(
         try {
           const mimeStr = audioState.mimeType || 'audio/webm';
           const extStr = audioState.fileExtension || 'webm';
-          const audioBlob = new Blob(audioState.audioChunks, { type: mimeStr });
+          // Use a rolling window of the last 12 seconds (~6 chunks) for lightning fast live Spanish->English translation
+          const recentChunks = audioState.audioChunks.slice(-6);
+          const audioBlob = new Blob(recentChunks, { type: mimeStr });
           const file = new File([audioBlob], `live.${extStr}`, { type: mimeStr });
-          const transcription = await groq.audio.transcriptions.create({
-            file, model: 'whisper-large-v3-turbo', temperature: 0, response_format: 'json',
+          // Use translations endpoint which auto-detects any language (e.g. Spanish) and returns English live out of the box.
+          const transcription = await groq.audio.translations.create({
+            file, model: 'whisper-large-v3', temperature: 0, response_format: 'json',
           });
-          audioState.liveTranscript = transcription.text || '';
+          if (transcription.text && transcription.text.trim().length > 3) {
+             audioState.liveTranscript = transcription.text.trim();
+          }
           if (elements.liveText && audioState.isRecording) {
             const words = audioState.liveTranscript.split(' ');
             let displayHtml = audioState.liveTranscript;
@@ -291,12 +296,12 @@ export async function processAudioFile(
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       
       const sampleRate = audioBuffer.sampleRate;
-      const numChannels = audioBuffer.numberOfChannels;
+      const numChannelsOrig = audioBuffer.numberOfChannels;
       const duration = audioBuffer.duration;
       
-      // WAV is uncompressed. 24MB = ~4.5 minutes of 44.1kHz mono.
-      // We use 4 minutes safe chunks
-      const CHUNK_DURATION = 4 * 60; 
+      // WAV is uncompressed. 25MB Groq limit. 
+      // Force Mono (1 channel) + 2.5 minute chunks (150s) to guarantee size < 15MB even at 48kHz
+      const CHUNK_DURATION = 150; 
       const totalChunks = Math.ceil(duration / CHUNK_DURATION);
       
       subtitleEl.textContent = `Transcribing in ${totalChunks} parts...`;
@@ -305,13 +310,18 @@ export async function processAudioFile(
         const startSec = i * CHUNK_DURATION;
         const endSec = Math.min((i + 1) * CHUNK_DURATION, duration);
         const chunkLength = Math.floor((endSec - startSec) * sampleRate);
+        const offset = Math.floor(startSec * sampleRate);
         
-        const chunkBuffer = audioCtx.createBuffer(numChannels, chunkLength, sampleRate);
-        for (let c = 0; c < numChannels; c++) {
-          const channelData = audioBuffer.getChannelData(c);
-          const chunkData = chunkBuffer.getChannelData(c);
-          const offset = Math.floor(startSec * sampleRate);
-          chunkData.set(channelData.subarray(offset, offset + chunkLength));
+        // Create 1-channel buffer to save bandwidth
+        const chunkBuffer = audioCtx.createBuffer(1, chunkLength, sampleRate);
+        const monoData = chunkBuffer.getChannelData(0);
+        
+        for (let j = 0; j < chunkLength; j++) {
+           let sum = 0;
+           for (let c = 0; c < numChannelsOrig; c++) {
+              sum += audioBuffer.getChannelData(c)[offset + j];
+           }
+           monoData[j] = sum / numChannelsOrig;
         }
         
         const wavBlob = audioBufferToWavBlob(chunkBuffer);
