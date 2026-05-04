@@ -261,6 +261,27 @@ export async function stopRecording(
   stopWaveform();
 }
 
+// ─── ACCEPTED AUDIO FORMATS ─────────────────────────────────────────
+
+export const ACCEPTED_AUDIO_EXTENSIONS = ['.mp3', '.flac', '.aac', '.aif', '.aiff', '.wav', '.m4a', '.webm', '.ogg', '.mp4'];
+export const ACCEPTED_AUDIO_MIMES = [
+  'audio/mpeg', 'audio/flac', 'audio/aac', 'audio/x-aiff', 'audio/aiff',
+  'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/webm', 'audio/ogg',
+  'audio/x-m4a', 'audio/m4a',
+];
+
+export function isAcceptedAudioFile(file: File): boolean {
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  return ACCEPTED_AUDIO_EXTENSIONS.includes(ext) || file.type.startsWith('audio/');
+}
+
+// Formats the browser CANNOT reliably decode via Web Audio API for chunking
+const NON_DECODABLE_EXTENSIONS = ['.flac', '.aac', '.aif', '.aiff'];
+function isNonDecodable(file: File): boolean {
+  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  return NON_DECODABLE_EXTENSIONS.includes(ext);
+}
+
 // ─── FILE UPLOAD ────────────────────────────────────────────────────
 
 export async function processAudioFile(
@@ -281,56 +302,67 @@ export async function processAudioFile(
 
   try {
     let fullText = '';
-    
+
     if (file.size <= MAX_DIRECT_SIZE) {
+      // Direct send — works for all formats under 25MB (mp3, flac, aac, aiff, wav, etc.)
       progressBar.style.width = '50%';
       fullText = await transcribeAudio(file);
       progressBar.style.width = '90%';
+    } else if (isNonDecodable(file)) {
+      // File is too large AND format can't be decoded by browser for chunking
+      overlayEl.classList.remove('active');
+      progressBar.style.width = '0%';
+      onError({
+        role: 'agent',
+        content: `⚠️ **File too large for this format**\n\n"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB but FLAC/AAC/AIFF files over 25MB cannot be chunked in the browser. Please convert to MP3 or WAV first, or trim the file to under 25MB.`,
+      });
+      return;
     } else {
-      // Very large file -> decode and chunk
+      // Large file with decodable format (mp3/wav/m4a) → decode and chunk via WAV
       subtitleEl.textContent = `File is large (${(file.size/1024/1024).toFixed(1)}MB). Slicing audio...`;
       progressBar.style.width = '15%';
-      
+
       const arrayBuffer = await file.arrayBuffer();
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-      
-      const sampleRate = audioBuffer.sampleRate;
-      const numChannelsOrig = audioBuffer.numberOfChannels;
-      const duration = audioBuffer.duration;
-      
-      // WAV is uncompressed. 25MB Groq limit. 
-      // Force Mono (1 channel) + 2.5 minute chunks (150s) to guarantee size < 15MB even at 48kHz
-      const CHUNK_DURATION = 150; 
-      const totalChunks = Math.ceil(duration / CHUNK_DURATION);
-      
-      subtitleEl.textContent = `Transcribing in ${totalChunks} parts...`;
-      
+
+       const sampleRate = audioBuffer.sampleRate;
+       const numChannelsOrig = audioBuffer.numberOfChannels;
+       const duration = audioBuffer.duration;
+
+       // WAV is uncompressed. 25MB Groq limit.
+       // Force Mono (1 channel) + 2.5 minute chunks (150s) to guarantee size < 15MB even at 48kHz
+       const CHUNK_DURATION = 150;
+       const totalChunks = Math.ceil(duration / CHUNK_DURATION);
+
+      subtitleEl.textContent = `Transcribing ${Math.round(duration / 60)} min of audio in ${totalChunks} parts...`;
+
       for (let i = 0; i < totalChunks; i++) {
         const startSec = i * CHUNK_DURATION;
         const endSec = Math.min((i + 1) * CHUNK_DURATION, duration);
-        const chunkLength = Math.floor((endSec - startSec) * sampleRate);
-        const offset = Math.floor(startSec * sampleRate);
-        
-        // Create 1-channel buffer to save bandwidth
-        const chunkBuffer = audioCtx.createBuffer(1, chunkLength, sampleRate);
-        const monoData = chunkBuffer.getChannelData(0);
-        
-        for (let j = 0; j < chunkLength; j++) {
-           let sum = 0;
-           for (let c = 0; c < numChannelsOrig; c++) {
-              sum += audioBuffer.getChannelData(c)[offset + j];
-           }
-           monoData[j] = sum / numChannelsOrig;
+         const chunkLength = Math.floor((endSec - startSec) * sampleRate);
+         const offset = Math.floor(startSec * sampleRate);
+
+         // Create 1-channel buffer to save bandwidth
+         const chunkBuffer = audioCtx.createBuffer(1, chunkLength, sampleRate);
+         const monoData = chunkBuffer.getChannelData(0);
+
+         for (let j = 0; j < chunkLength; j++) {
+            let sum = 0;
+            for (let c = 0; c < numChannelsOrig; c++) {
+               sum += audioBuffer.getChannelData(c)[offset + j];
+            }
+            monoData[j] = sum / numChannelsOrig;
+         }
         }
-        
+
         const wavBlob = audioBufferToWavBlob(chunkBuffer);
         const chunkFile = new File([wavBlob], `chunk_${i}.wav`, { type: 'audio/wav' });
-        
+
         subtitleEl.textContent = `Transcribing part ${i + 1} of ${totalChunks}...`;
         const text = await transcribeAudio(chunkFile);
         fullText += text + ' ';
-        
+
         progressBar.style.width = `${15 + Math.floor(((i + 1) / totalChunks) * 75)}%`;
       }
     }

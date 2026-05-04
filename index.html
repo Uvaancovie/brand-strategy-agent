@@ -192,6 +192,22 @@
       </div>
     </div>
 
+    <!-- Scripts Page -->
+    <div class="scripts-page hidden" id="scripts-page">
+      <div class="scripts-page-inner">
+        <div class="scripts-page-header">
+          <div>
+            <h2>🎬 Transcript Scripts</h2>
+            <p class="scripts-page-sub">Manage your transcription scripts. Create, edit, delete, and use as context or B.I.G Doc content.</p>
+          </div>
+          <div class="scripts-page-actions">
+            <button class="btn-ghost" id="btn-scripts-close">Close</button>
+          </div>
+        </div>
+        <div id="scripts-list-container" class="scripts-list-container"></div>
+      </div>
+    </div>
+
     <!-- Ambient background -->
     <div class="ambient-bg">
       <div class="orb orb-1"></div>
@@ -242,6 +258,7 @@
       <aside class="sidebar" id="sidebar">
         <div class="sidebar-title">Framework Sections</div>
         <button id="nav-context-summary" class="nav-context-summary hidden" type="button">🧭 Context Summary</button>
+        <button id="btn-scripts" class="nav-scripts-btn" type="button">🎬 Transcript Scripts</button>
         <nav class="section-nav" id="section-nav">
           <!-- Populated by JS -->
         </nav>
@@ -448,7 +465,12 @@
             <button id="btn-upload" class="btn-upload" title="Upload Audio File">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </button>
-            <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.m4a,.webm,.ogg,.flac,.pdf" style="display:none" />
+            <input type="file" id="file-input" accept="audio/*,.mp3,.wav,.m4a,.webm,.ogg,.flac,.aac,.aif,.aiff,.pdf,.json,.md,.markdown" style="display:none" />
+
+            <button id="btn-csv-upload" class="btn-csv" title="Upload CSV Analytics">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            </button>
+            <input type="file" id="csv-file-input" accept=".csv,text/csv" style="display:none" />
             <button id="btn-mic" class="btn-mic" title="Record Audio">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             </button>
@@ -457,7 +479,7 @@
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
-          <p class="input-hint">🎙️ Record audio · 📁 Upload audio files · 📋 Paste transcripts · 💬 Chat with Brandy</p>
+          <p class="input-hint">🎙️ Record audio · 📁 Upload audio · 📊 Upload CSV analytics · 📋 Paste transcripts · 💬 Chat with Brandy</p>
         </div>
       </section>
 
@@ -506,7 +528,7 @@
       </div>
     </div>
 
-    <!-- Processing Overlay (for file uploads) -->
+    <!-- Processing Overlay (Market Research + PDF Generation) -->
     <div class="processing-overlay" id="processing-overlay">
       <div class="processing-inner">
         <div class="processing-spinner-ring"></div>
@@ -518,10 +540,18 @@
             <line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
         </div>
-        <div class="processing-title" id="processing-title">Processing Audio</div>
-        <div class="processing-subtitle" id="processing-subtitle">Transcribing with Whisper AI...</div>
+
+        <div class="processing-pct" id="processing-pct">0%</div>
+        <div class="processing-title" id="processing-title">Researching Your Market</div>
+        <div class="processing-subtitle" id="processing-subtitle">Initializing market research...</div>
+
         <div class="processing-progress">
           <div class="processing-progress-bar" id="processing-progress-bar"></div>
+        </div>
+
+        <!-- Live step log -->
+        <div class="processing-steps" id="processing-steps">
+          <!-- Steps added dynamically by JS -->
         </div>
       </div>
     </div>

@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VMV8 — Agent Implementation Spec</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --void: #0a0a0f;
+  --surface: #111118;
+  --card: #16161f;
+  --border: #2a2a3a;
+  --accent: #7c5cbf;
+  --accent-bright: #a07de8;
+  --accent-glow: rgba(124,92,191,0.15);
+  --brandy: #e8734a;
+  --mark: #4a9ee8;
+  --cc: #4ae87a;
+  --text: #e8e6f0;
+  --muted: #6b6880;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--void);
+  color: var(--text);
+  font-family: var(--sans);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Grid bg */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(124,92,191,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124,92,191,0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* HEADER */
+header {
+  position: relative;
+  z-index: 10;
+  padding: 60px 48px 40px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.logo-area { display: flex; flex-direction: column; gap: 8px; }
+.logo {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  background: linear-gradient(135deg, var(--accent-bright), var(--brandy));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1;
+}
+.logo-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.header-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+.badge-groq { border-color: var(--accent); color: var(--accent-bright); background: var(--accent-glow); }
+.badge-v1 { border-color: var(--border); color: var(--muted); }
+
+/* NAV */
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(10,10,15,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 48px;
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+}
+nav a {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 14px 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s;
+}
+nav a:hover { color: var(--text); border-color: var(--accent); }
+nav a.active { color: var(--accent-bright); border-color: var(--accent-bright); }
+
+/* LAYOUT */
+main {
+  position: relative;
+  z-index: 1;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 48px 80px;
+}
+
+section {
+  padding-top: 72px;
+}
+
+.section-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-label::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 1px;
+  background: var(--accent);
+}
+.section-title {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  line-height: 1.1;
+  margin-bottom: 32px;
+}
+
+/* OVERVIEW CARD */
+.overview-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 36px;
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+.overview-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--brandy));
+}
+.overview-card p {
+  font-size: 18px;
+  line-height: 1.7;
+  color: #c4c0d8;
+  font-weight: 400;
+}
+.overview-card p strong { color: var(--text); font-weight: 600; }
+
+/* AGENT CARDS */
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  margin-bottom: 48px;
+}
+.agent-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 28px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.agent-card:hover { transform: translateY(-2px); }
+.agent-card.brandy { --agent-color: var(--brandy); }
+.agent-card.mark   { --agent-color: var(--mark); }
+.agent-card.cc     { --agent-color: var(--cc); }
+.agent-card:hover { border-color: var(--agent-color); }
+.agent-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top left, color-mix(in srgb, var(--agent-color) 8%, transparent), transparent 60%);
+  pointer-events: none;
+}
+.agent-number {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.agent-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--agent-color);
+  margin-bottom: 4px;
+}
+.agent-role {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  letter-spacing: 1px;
+}
+.agent-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8c8aa0;
+}
+.agent-timeline {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+.agent-timeline span { color: var(--agent-color); }
+
+/* TABS */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 28px;
+}
+.tab-btn {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: color 0.2s, border-color 0.2s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent-bright); border-bottom-color: var(--accent-bright); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* CODE BLOCKS */
+.code-block {
+  background: #0d0d14;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+.code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.code-lang {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-bright);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.copy-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: color 0.2s, border-color 0.2s;
+}
+.copy-btn:hover { color: var(--text); border-color: var(--accent); }
+.copy-btn.copied { color: var(--cc); border-color: var(--cc); }
+pre {
+  padding: 20px;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #c4c0d8;
+}
+.kw { color: var(--accent-bright); }
+.str { color: var(--cc); }
+.cm { color: var(--muted); font-style: italic; }
+.fn { color: var(--brandy); }
+.num { color: var(--mark); }
+.prop { color: #e8d4a0; }
+
+/* TIMELINE */
+.timeline {
+  position: relative;
+  padding-left: 32px;
+  margin-bottom: 48px;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: linear-gradient(to bottom, var(--accent), var(--cc));
+}
+.timeline-item {
+  position: relative;
+  margin-bottom: 32px;
+}
+.timeline-dot {
+  position: absolute;
+  left: -28px;
+  top: 6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--void);
+  transition: background 0.3s;
+}
+.timeline-item:hover .timeline-dot { background: var(--accent); }
+.timeline-month {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent-bright);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.timeline-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.timeline-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8c8aa0;
+}
+
+/* FEATURE LIST */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.feature-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.feature-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.feature-text h4 { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.feature-text p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+/* ENV BLOCK */
+.env-block {
+  background: #0d0d14;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 2;
+}
+.env-key { color: var(--mark); }
+.env-val { color: var(--cc); }
+.env-comment { color: var(--muted); }
+
+/* WARN BLOCK */
+.warn-block {
+  background: rgba(232,115,74,0.08);
+  border: 1px solid rgba(232,115,74,0.3);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: var(--brandy);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.warn-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+/* INFO BLOCK */
+.info-block {
+  background: rgba(124,92,191,0.08);
+  border: 1px solid rgba(124,92,191,0.3);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: var(--accent-bright);
+  line-height: 1.6;
+}
+
+/* STACK TABLE */
+.stack-table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
+.stack-table th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.stack-table td {
+  padding: 14px 16px;
+  font-size: 13px;
+  border-bottom: 1px solid rgba(42,42,58,0.5);
+  vertical-align: top;
+}
+.stack-table tr:last-child td { border-bottom: none; }
+.stack-table td:first-child { font-family: var(--mono); color: var(--accent-bright); font-size: 12px; }
+.stack-table td:last-child { color: var(--muted); }
+
+/* FOOTER */
+footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--border);
+  padding: 32px 48px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+footer p { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.footer-brand { color: var(--accent-bright); }
+
+/* ANIMATIONS */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate { animation: fadeUp 0.5s ease forwards; }
+.delay-1 { animation-delay: 0.1s; opacity: 0; }
+.delay-2 { animation-delay: 0.2s; opacity: 0; }
+.delay-3 { animation-delay: 0.3s; opacity: 0; }
+
+/* PROGRESS BARS */
+.progress-row { margin-bottom: 16px; }
+.progress-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; }
+.progress-label span:first-child { color: var(--text); font-family: var(--mono); }
+.progress-label span:last-child { color: var(--muted); font-family: var(--mono); }
+.progress-track { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 1s ease; }
+
+@media (max-width: 768px) {
+  header, nav, main { padding-left: 20px; padding-right: 20px; }
+  .agents-grid { grid-template-columns: 1fr; }
+  .feature-grid { grid-template-columns: 1fr; }
+  .logo { font-size: 36px; }
+}
+</style>
+</head>
+<body>
+
+<header class="animate">
+  <div class="logo-area">
+    <div class="logo">VMV8</div>
+    <div class="logo-sub">Voice Matrix — Autonomous Agent System</div>
+  </div>
+  <div class="header-meta">
+    <div class="badge badge-groq">Powered by Groq</div>
+    <div class="badge badge-v1">v1.0 — Build Spec</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px;">Client: Mivalaa Paez-Aguilar</div>
+  </div>
+</header>
+
+<nav id="main-nav">
+  <a href="#overview" class="active">Overview</a>
+  <a href="#agents">Agents</a>
+  <a href="#implementation">Implementation</a>
+  <a href="#stack">Tech Stack</a>
+  <a href="#timeline">Timeline</a>
+  <a href="#env">Environment</a>
+</nav>
+
+<main>
+
+  <!-- OVERVIEW -->
+  <section id="overview">
+    <div class="section-label">01 — Mission</div>
+    <h2 class="section-title">What VMV8 Does</h2>
+
+    <div class="overview-card animate delay-1">
+      <p>VMV8 is an <strong>AI-powered reasoning system</strong> built to automatically extract, analyse, and generate comprehensive brand strategies from raw meeting conversations. It listens to audio, transcribes it, then applies the <strong>Voice Matrix 8-section framework</strong> to produce a complete Brand Identity Guiding Document (B.I.G Doc) — automatically.</p>
+    </div>
+
+    <div class="feature-grid animate delay-2">
+      <div class="feature-item">
+        <div class="feature-icon">🎙️</div>
+        <div class="feature-text">
+          <h4>Audio → Text</h4>
+          <p>Upload meeting recordings. Groq Whisper transcribes instantly.</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">🧠</div>
+        <div class="feature-text">
+          <h4>Extract → Structure</h4>
+          <p>LLaMA 3.3 70B maps transcript to the 8-section brand framework.</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">📄</div>
+        <div class="feature-text">
+          <h4>Generate B.I.G Doc</h4>
+          <p>Outputs a professional brand strategy document ready for the client.</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon">☁️</div>
+        <div class="feature-text">
+          <h4>Google Drive Sync</h4>
+          <p>Upload on the road — agent starts processing while you travel.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AGENTS -->
+  <section id="agents">
+    <div class="section-label">02 — The System</div>
+    <h2 class="section-title">3 Autonomous Agents</h2>
+
+    <div class="agents-grid animate delay-1">
+      <div class="agent-card brandy" onclick="scrollToAgent('brandy-detail')">
+        <div class="agent-number">AGENT 01</div>
+        <div class="agent-name">Brandy</div>
+        <div class="agent-role">Branding Agent</div>
+        <div class="agent-desc">Transcribes audio, extracts brand strategy across 8 sections, and produces the B.I.G Doc. The core revenue-generating agent.</div>
+        <div class="agent-timeline">
+          Build <span>Apr–May</span> · Test <span>Jun</span>
+        </div>
+      </div>
+      <div class="agent-card mark" onclick="scrollToAgent('mark-detail')">
+        <div class="agent-number">AGENT 02</div>
+        <div class="agent-name">Mark</div>
+        <div class="agent-role">Market Research Agent</div>
+        <div class="agent-desc">Autonomously searches government databases, analyses market data, and generates strategic marketing insights. Browser-use enabled.</div>
+        <div class="agent-timeline">
+          Build <span>Jun–Jul</span> · Test <span>Aug</span>
+        </div>
+      </div>
+      <div class="agent-card cc" onclick="scrollToAgent('cc-detail')">
+        <div class="agent-number">AGENT 03</div>
+        <div class="agent-name">CC</div>
+        <div class="agent-role">Campaign & Content Agent</div>
+        <div class="agent-desc">Creates and publishes social media campaigns. Integrates with platforms directly. Tracks metrics and reports performance.</div>
+        <div class="agent-timeline">
+          Build <span>Aug–Sep</span> · Test <span>Oct</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brandy Detail -->
+    <div id="brandy-detail" style="scroll-margin-top:80px;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--brandy);"></div>
+        <h3 style="font-size:20px;color:var(--brandy);">Brandy — Full Spec</h3>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab(this,'brandy-arch')">Architecture</button>
+        <button class="tab-btn" onclick="switchTab(this,'brandy-flow')">Data Flow</button>
+        <button class="tab-btn" onclick="switchTab(this,'brandy-prompt')">System Prompt</button>
+        <button class="tab-btn" onclick="switchTab(this,'brandy-output')">Output Format</button>
+      </div>
+
+      <div id="brandy-arch" class="tab-panel active">
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JS — services/groq.service.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre><span class="cm">// Groq service — handles all AI calls with retry + context trimming</span>
+<span class="kw">import</span> Groq <span class="kw">from</span> <span class="str">'groq-sdk'</span>;
+
+<span class="kw">const</span> <span class="prop">groq</span> = <span class="kw">new</span> <span class="fn">Groq</span>({
+  <span class="prop">apiKey</span>: import.meta.env.<span class="prop">VITE_GROQ_API_KEY</span>,
+  <span class="prop">dangerouslyAllowBrowser</span>: <span class="kw">true</span>
+});
+
+<span class="kw">const</span> <span class="prop">MAX_HISTORY</span> = <span class="num">20</span>; <span class="cm">// Prevent context window overflow</span>
+
+<span class="kw">export async function</span> <span class="fn">extractBrandStrategy</span>(transcript, history = []) {
+  <span class="kw">const</span> trimmed = history.<span class="fn">slice</span>(-<span class="prop">MAX_HISTORY</span>);
+
+  <span class="kw">const</span> response = <span class="kw">await</span> groq.chat.completions.<span class="fn">create</span>({
+    <span class="prop">model</span>: <span class="str">'llama-3.3-70b-versatile'</span>,
+    <span class="prop">response_format</span>: { <span class="prop">type</span>: <span class="str">'json_object'</span> }, <span class="cm">// Structured output — no regex</span>
+    <span class="prop">messages</span>: [
+      { <span class="prop">role</span>: <span class="str">'system'</span>, <span class="prop">content</span>: <span class="prop">BRANDY_SYSTEM_PROMPT</span> },
+      ...trimmed,
+      { <span class="prop">role</span>: <span class="str">'user'</span>, <span class="prop">content</span>: transcript }
+    ]
+  });
+
+  <span class="kw">return</span> <span class="fn">JSON.parse</span>(response.choices[<span class="num">0</span>].message.content);
+}
+
+<span class="kw">export async function</span> <span class="fn">transcribeAudio</span>(audioFile) {
+  <span class="kw">return await</span> groq.audio.transcriptions.<span class="fn">create</span>({
+    <span class="prop">file</span>: audioFile,
+    <span class="prop">model</span>: <span class="str">'whisper-large-v3-turbo'</span>,
+    <span class="prop">response_format</span>: <span class="str">'json'</span>,
+    <span class="prop">temperature</span>: <span class="num">0</span>
+  });
+}</pre>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JS — store/brandscript.store.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre><span class="cm">// Persistent reactive store — survives page refresh</span>
+<span class="kw">import</span> { <span class="prop">reactive</span>, <span class="prop">watch</span> } <span class="kw">from</span> <span class="str">'vue'</span>; <span class="cm">// or Zustand for React</span>
+
+<span class="kw">const</span> <span class="prop">STORAGE_KEY</span> = <span class="str">'vmv8_brandscript'</span>;
+
+<span class="kw">function</span> <span class="fn">loadFromStorage</span>() {
+  <span class="kw">try</span> {
+    <span class="kw">const</span> saved = localStorage.<span class="fn">getItem</span>(<span class="prop">STORAGE_KEY</span>);
+    <span class="kw">return</span> saved ? <span class="fn">JSON.parse</span>(saved) : <span class="fn">initEmpty</span>();
+  } <span class="kw">catch</span> { <span class="kw">return</span> <span class="fn">initEmpty</span>(); }
+}
+
+<span class="kw">export const</span> <span class="prop">store</span> = <span class="fn">reactive</span>({
+  <span class="prop">brandscript</span>: <span class="fn">loadFromStorage</span>(),
+  <span class="prop">history</span>: [],
+  <span class="prop">status</span>: <span class="str">'idle'</span> <span class="cm">// idle | transcribing | extracting | done</span>
+});
+
+<span class="cm">// Auto-save on every change</span>
+<span class="fn">watch</span>(() => store.brandscript, (val) => {
+  localStorage.<span class="fn">setItem</span>(<span class="prop">STORAGE_KEY</span>, <span class="fn">JSON.stringify</span>(val));
+}, { <span class="prop">deep</span>: <span class="kw">true</span> });</pre>
+        </div>
+      </div>
+
+      <div id="brandy-flow" class="tab-panel">
+        <div class="info-block">
+          <strong>Brandy's Processing Pipeline</strong><br>
+          Audio File → Whisper Transcription → LLaMA 3.3 Extraction (JSON Schema) → BrandScript Store → B.I.G Doc Generator → Canva API / PDF Export → Google Drive Upload → Notify Uvaan
+        </div>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JS — pipeline/brandy.pipeline.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre><span class="kw">export async function</span> <span class="fn">runBrandyPipeline</span>(audioFile) {
+  <span class="cm">// Step 1: Transcribe</span>
+  store.status = <span class="str">'transcribing'</span>;
+  <span class="kw">const</span> { text } = <span class="kw">await</span> <span class="fn">transcribeAudio</span>(audioFile);
+
+  <span class="cm">// Step 2: Extract brand strategy as typed JSON</span>
+  store.status = <span class="str">'extracting'</span>;
+  <span class="kw">const</span> extracted = <span class="kw">await</span> <span class="fn">extractBrandStrategy</span>(text);
+
+  <span class="cm">// Step 3: Merge into store (fills only new fields)</span>
+  <span class="fn">mergeBrandscript</span>(extracted);
+
+  <span class="cm">// Step 4: Check completeness — ask follow-up if gaps</span>
+  <span class="kw">const</span> gaps = <span class="fn">findGaps</span>(store.brandscript);
+  <span class="kw">if</span> (gaps.length > <span class="num">0</span>) <span class="kw">await</span> <span class="fn">conductFollowUp</span>(gaps);
+
+  <span class="cm">// Step 5: Generate B.I.G Doc</span>
+  store.status = <span class="str">'done'</span>;
+  <span class="kw">return await</span> <span class="fn">generateBIGDoc</span>(store.brandscript);
+}</pre>
+        </div>
+      </div>
+
+      <div id="brandy-prompt" class="tab-panel">
+        <div class="warn-block">
+          <div class="warn-icon">⚡</div>
+          <div>This is the core system prompt that gives Brandy her intelligence. Customise the framework sections to match your exact VM methodology. The JSON schema enforces typed output — no more brittle EXTRACT: regex patterns.</div>
+        </div>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JS — config/brandy.prompt.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre><span class="kw">export const</span> <span class="prop">BRANDY_SYSTEM_PROMPT</span> = <span class="str">`
+You are Brandy — the Volcanic Marketing brand strategy agent.
+
+Your job: extract a complete brand strategy from meeting transcripts
+using the Voice Matrix 8-section framework.
+
+ALWAYS respond with valid JSON matching this schema exactly:
+{
+  "name": {
+    "purpose": string | null,
+    "origin_story_character": string | null,
+    "origin_story_problem": string | null,
+    "origin_story_guide": string | null,
+    "tagline": string | null,
+    "slogan": string | null
+  },
+  "character": { "values": null, "conviction": null, "charity": null },
+  "intent":    { "vision": null, "mission": null, "message": null },
+  "voice":     { "archetype": null, "tone": null, "topics_of_authority": null },
+  "creation":  { "product": null, "service": null, "superpower": null },
+  "operation": { "tools": null, "processes": null, "systems": null },
+  "image":     { "logo": null, "fonts": null, "colour_palette": null },
+  "admin":     { "policies": null, "legal": null, "finance": null },
+  "gaps": ["list of section.field strings that need follow-up"],
+  "confidence": 0.0
+}
+
+Rules:
+- Only fill fields you can confidently extract from the transcript
+- Return null for fields with insufficient data
+- Populate "gaps" with section.field paths needing clarification
+- confidence is 0.0–1.0 reflecting how complete the extraction is
+`</span>;</pre>
+        </div>
+      </div>
+
+      <div id="brandy-output" class="tab-panel">
+        <div class="info-block">The B.I.G Doc is the primary deliverable — a structured brand identity document exported as PDF and optionally pushed to Canva for design formatting.</div>
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JS — generators/big-doc.generator.js</span>
+            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          </div>
+          <pre><span class="kw">import</span> { <span class="prop">Document</span>, <span class="prop">Packer</span> } <span class="kw">from</span> <span class="str">'docx'</span>;
+
+<span class="kw">export async function</span> <span class="fn">generateBIGDoc</span>(brandscript) {
+  <span class="kw">const</span> doc = <span class="kw">new</span> <span class="fn">Document</span>({
+    <span class="prop">sections</span>: [{
+      <span class="prop">children</span>: [
+        <span class="fn">coverPage</span>(brandscript.name),
+        ...FRAMEWORK.<span class="fn">map</span>(section =>
+          <span class="fn">renderSection</span>(section, brandscript[section.id])
+        )
+      ]
+    }]
+  });
+
+  <span class="kw">const</span> buffer = <span class="kw">await</span> Packer.<span class="fn">toBuffer</span>(doc);
+
+  <span class="cm">// Upload to Google Drive automatically</span>
+  <span class="kw">await</span> <span class="fn">uploadToDrive</span>(buffer, <span class="str">`B.I.G Doc — </span><span class="prop">${brandscript.name.purpose}</span><span class="str">.docx`</span>);
+
+  <span class="cm">// Notify Uvaan</span>
+  <span class="kw">await</span> <span class="fn">sendNotification</span>(<span class="str">'B.I.G Doc is ready!'</span>);
+
+  <span class="kw">return</span> buffer;
+}</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- IMPLEMENTATION -->
+  <section id="implementation">
+    <div class="section-label">03 — Build Guide</div>
+    <h2 class="section-title">Implementation Steps</h2>
+
+    <div class="info-block">Follow these steps in order. Each step builds on the last. Don't skip the structured output migration — it's the single biggest reliability improvement.</div>
+
+    <div class="timeline" id="build-timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-month">Step 01 — Foundation</div>
+        <div class="timeline-title">Migrate to structured output</div>
+        <div class="timeline-body">Replace all EXTRACT: regex patterns with Groq's JSON mode. Define the BrandScript JSON schema. Delete the dead analyzeInput() function (~150 lines). This is the single most impactful change.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-month">Step 02 — Persistence</div>
+        <div class="timeline-title">Add localStorage store</div>
+        <div class="timeline-body">Wire localStorage save/load into the state object. Progress must survive page refresh. One line saves state; one line restores it on init. Users should never lose a session.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-month">Step 03 — Separation</div>
+        <div class="timeline-title">Split main.js into modules</div>
+        <div class="timeline-body">Extract services/, store/, components/, and config/ into separate files. The 650-line monolith becomes 6 focused modules. Easier to test, easier to hand to another developer.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-month">Step 04 — Safety</div>
+        <div class="timeline-title">Add context window guard</div>
+        <div class="timeline-body">Trim conversationHistory to last 20 messages before every API call. Without this, a long session will eventually hit the model's context limit and fail silently.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-month">Step 05 — Integrations</div>
+        <div class="timeline-title">Google Drive + Canva APIs</div>
+        <div class="timeline-body">Wire Google Drive upload so recordings can be dropped in remotely. Canva API for formatting the B.I.G Doc into a visually branded deliverable. Both use OAuth 2.0.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-month">Step 06 — Types</div>
+        <div class="timeline-title">Add TypeScript</div>
+        <div class="timeline-body">Migrate to TypeScript. Define BrandScript, Section, Field, and Message types. This prevents the silent undefined bugs that come from accessing state with string keys.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STACK -->
+  <section id="stack">
+    <div class="section-label">04 — Technology</div>
+    <h2 class="section-title">Tech Stack</h2>
+
+    <table class="stack-table">
+      <thead>
+        <tr>
+          <th>Layer</th>
+          <th>Technology</th>
+          <th>Why</th>
+          <th>Agent</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Transcription</td>
+          <td>Groq — Whisper Large v3 Turbo</td>
+          <td>Fastest transcription available. Groq's hardware acceleration.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">Brandy</td>
+        </tr>
+        <tr>
+          <td>LLM</td>
+          <td>Groq — LLaMA 3.3 70B Versatile</td>
+          <td>Best open-weight model for structured extraction + reasoning.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">All Agents</td>
+        </tr>
+        <tr>
+          <td>Output Format</td>
+          <td>Groq JSON mode (response_format)</td>
+          <td>Replaces brittle EXTRACT: regex with typed, guaranteed JSON.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">Brandy</td>
+        </tr>
+        <tr>
+          <td>Frontend</td>
+          <td>Vite + Vanilla JS → TypeScript</td>
+          <td>Already set up. Add TS incrementally. No framework lock-in.</td>
+          <td style="color:var(--muted);font-family:var(--mono);font-size:11px;">All</td>
+        </tr>
+        <tr>
+          <td>Document Generation</td>
+          <td>docx (npm) → PDF</td>
+          <td>Already used in your SLA. Same library for B.I.G Doc.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">Brandy</td>
+        </tr>
+        <tr>
+          <td>Cloud Storage</td>
+          <td>Google Drive API v3</td>
+          <td>Upload-on-road workflow. OAuth 2.0. Trigger processing remotely.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">Brandy</td>
+        </tr>
+        <tr>
+          <td>Design Output</td>
+          <td>Canva API</td>
+          <td>Auto-populate brand doc template. Client-ready formatted output.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">Brandy</td>
+        </tr>
+        <tr>
+          <td>Browser Automation</td>
+          <td>Playwright / browser-use</td>
+          <td>Needed for Mark to autonomously log in to gov databases.</td>
+          <td style="color:var(--mark);font-family:var(--mono);font-size:11px;">Mark</td>
+        </tr>
+        <tr>
+          <td>Social Media</td>
+          <td>Meta Graph API, X API v2</td>
+          <td>CC posts and collects metrics across platforms.</td>
+          <td style="color:var(--cc);font-family:var(--mono);font-size:11px;">CC</td>
+        </tr>
+        <tr>
+          <td>Notifications</td>
+          <td>Web Push / Email (Resend)</td>
+          <td>Notify when B.I.G Doc is ready. Simple webhook trigger.</td>
+          <td style="color:var(--brandy);font-family:var(--mono);font-size:11px;">Brandy</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="progress-row">
+      <div class="progress-label"><span>Brandy (Agent 01)</span><span>Architecture defined</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:72%;background:var(--brandy);"></div></div>
+    </div>
+    <div class="progress-row">
+      <div class="progress-label"><span>Mark (Agent 02)</span><span>Scoped — not started</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:15%;background:var(--mark);"></div></div>
+    </div>
+    <div class="progress-row">
+      <div class="progress-label"><span>CC (Agent 03)</span><span>Planned — not started</span></div>
+      <div class="progress-track"><div class="progress-fill" style="width:5%;background:var(--cc);"></div></div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section id="timeline">
+    <div class="section-label">05 — Schedule</div>
+    <h2 class="section-title">6-Month Delivery Plan</h2>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot" style="border-color:var(--brandy);"></div>
+        <div class="timeline-month" style="color:var(--brandy);">Month 1 — April 2026</div>
+        <div class="timeline-title">Brandy: Architecture & Core Build</div>
+        <div class="timeline-body">Refactor to modular structure. Implement JSON structured output. Add persistence layer. Build audio pipeline. Wire Google Drive upload. Internal testing begins.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot" style="border-color:var(--brandy);"></div>
+        <div class="timeline-month" style="color:var(--brandy);">Month 2 — May 2026</div>
+        <div class="timeline-title">Brandy: Refinement & B.I.G Doc Output</div>
+        <div class="timeline-body">B.I.G Doc generator. Canva API integration. Notification system. Client review and feedback. Brandy handed over for live use by end of month. <strong style="color:var(--brandy);">Deadline: 31 May 2026.</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot" style="border-color:var(--mark);"></div>
+        <div class="timeline-month" style="color:var(--mark);">Month 3 — June 2026</div>
+        <div class="timeline-title">Mark: Market Research Agent Build</div>
+        <div class="timeline-body">Browser-use integration. Government database access flows. Data analysis pipeline. Market insight generation with LLaMA. Output: structured research reports.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot" style="border-color:var(--mark);"></div>
+        <div class="timeline-month" style="color:var(--mark);">Month 4 — July/August 2026</div>
+        <div class="timeline-title">Mark: Test, Refine & Hand Over</div>
+        <div class="timeline-body">Autonomous loop testing. Error handling for browser automation. Rate limit management. Mark enters live use. Brandy + Mark run in parallel.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot" style="border-color:var(--cc);"></div>
+        <div class="timeline-month" style="color:var(--cc);">Month 5 — August/September 2026</div>
+        <div class="timeline-title">CC: Campaign & Content Agent Build</div>
+        <div class="timeline-body">Social media API integrations (Meta, X, LinkedIn). Content generation pipeline. Campaign scheduling. Metrics collection and reporting dashboard.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot" style="border-color:var(--cc);"></div>
+        <div class="timeline-month" style="color:var(--cc);">Month 6 — September 2026</div>
+        <div class="timeline-title">CC: Live + Full System Integration</div>
+        <div class="timeline-body">All 3 agents running. Cross-agent data flow (Brandy → Mark → CC). Final QA. <strong style="color:var(--cc);">Full system delivery: 30 Sep 2026.</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ENV -->
+  <section id="env">
+    <div class="section-label">06 — Configuration</div>
+    <h2 class="section-title">Environment Setup</h2>
+
+    <div class="warn-block">
+      <div class="warn-icon">⚠️</div>
+      <div><strong>Never commit your .env file to Git.</strong> Add .env to your .gitignore immediately. Your previous key was exposed in chat — generate a new one at console.groq.com before continuing.</div>
+    </div>
+
+    <div class="env-block">
+      <span class="env-comment"># .env — VMV8 Local Configuration</span><br><br>
+      <span class="env-key">VITE_GROQ_API_KEY</span>=<span class="env-val">your_new_key_here</span><br><br>
+      <span class="env-comment"># Google Drive (OAuth 2.0)</span><br>
+      <span class="env-key">VITE_GOOGLE_CLIENT_ID</span>=<span class="env-val">your_google_client_id</span><br>
+      <span class="env-key">VITE_GOOGLE_DRIVE_FOLDER_ID</span>=<span class="env-val">your_target_folder_id</span><br><br>
+      <span class="env-comment"># Canva API (Phase 2)</span><br>
+      <span class="env-key">VITE_CANVA_API_KEY</span>=<span class="env-val">your_canva_key</span><br><br>
+      <span class="env-comment"># Notifications (Phase 2)</span><br>
+      <span class="env-key">VITE_RESEND_API_KEY</span>=<span class="env-val">your_resend_key</span><br>
+      <span class="env-key">VITE_NOTIFY_EMAIL</span>=<span class="env-val">uvaan@yourdomain.com</span>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH — Quick Start</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><span class="cm"># Clone and install</span>
+git clone your-vmv8-repo
+cd vmv8
+npm install
+
+<span class="cm"># Install required packages</span>
+npm install groq-sdk docx
+
+<span class="cm"># Create your env file</span>
+cp .env.example .env
+<span class="cm"># Add your VITE_GROQ_API_KEY to .env</span>
+
+<span class="cm"># Run locally</span>
+npm run dev</pre>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <p>VMV8 — Voice Matrix Autonomous Agent System &nbsp;·&nbsp; <span class="footer-brand">Volcanic Marketing</span></p>
+  <p>Built by Uvaan Covenden &nbsp;·&nbsp; For Mivalaa Paez-Aguilar &nbsp;·&nbsp; 2026</p>
+</footer>
+
+<script>
+// Nav active state on scroll
+const sections = document.querySelectorAll('section[id]');
+const navLinks = document.querySelectorAll('nav a');
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      navLinks.forEach(a => a.classList.remove('active'));
+      const active = document.querySelector(`nav a[href="#${entry.target.id}"]`);
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-30% 0px -60% 0px' });
+
+sections.forEach(s => observer.observe(s));
+
+// Tab switching
+function switchTab(btn, panelId) {
+  const tabGroup = btn.closest('.tabs');
+  const panelGroup = tabGroup.nextElementSibling.parentElement;
+  tabGroup.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const panels = tabGroup.parentElement.querySelectorAll('.tab-panel');
+  panels.forEach(p => p.classList.remove('active'));
+  document.getElementById(panelId).classList.add('active');
+}
+
+// Copy code
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('pre');
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// Scroll to agent
+function scrollToAgent(id) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Animate progress bars on scroll
+const progressFills = document.querySelectorAll('.progress-fill');
+const progObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.style.width = entry.target.style.width;
+    }
+  });
+}, { threshold: 0.3 });
+progressFills.forEach(p => progObserver.observe(p));
+</script>
+</body>
+</html>

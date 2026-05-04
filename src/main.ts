@@ -1,6 +1,6 @@
 // ===================================================================
-// VMV8 — BRAND STRATEGY AGENT (BRANDY)
-// Main entry point — wires services, store, and components together
+// VMV8 Ã¢â‚¬â€ BRAND STRATEGY AGENT (BRANDY)
+// Main entry point Ã¢â‚¬â€ wires services, store, and components together
 // ===================================================================
 
 import './style.css';
@@ -12,19 +12,24 @@ inject();
 import { FRAMEWORK, type ChatMessage } from './config/framework';
 
 // Store
-import { state, saveSession, loadSession, clearSession, getFilledCount, getProgressStats, hasExistingData } from './store/brandscript.store';
+import { state, saveSession, loadSession, clearSession, getFilledCount, getProgressStats, hasExistingData, scheduleSaveToSupabase, loadFromSupabase } from './store/brandscript.store';
 
 // Services
 import { callGroq } from './services/groq.service';
 import { applyExtractions } from './services/extraction.service';
-import { startRecording, stopRecording, processAudioFile, audioState } from './services/audio.service';
+import { startRecording, stopRecording, processAudioFile, audioState, isAcceptedAudioFile } from './services/audio.service';
 import { scrapeContextSources } from './services/scrape.service';
+import { processCSVFile } from './services/csv.service';
 import { supabase, getCurrentSession, setupAuthListener } from './services/supabase.service';
 import { getProfile, upsertProfile, uploadAvatar, logActivity, getActivity, getActivityStats } from './services/profile.service';
-import { generateMarketData } from './services/market.service';
-import { generateBigDocPdf } from './services/pdf.service';
+import { generateMarketData, type GenerateMarketDataResult } from './services/market.service';
+import { saveBrandscriptToSupabase } from './services/brandscript.service';
+import { saveMarketResearch, saveDocumentExport } from './services/brandscript.service';
+import { generateHtmlDoc } from './services/html-export.service';
+import html2pdf from 'html2pdf.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import type { ContextPanel } from './store/brandscript.store';
 pdfjsLib.GlobalWorkerOptions.workerSrc = PdfWorkerUrl;
 
 // Components
@@ -33,8 +38,11 @@ import { renderBrandscript } from './components/BrandscriptPanel';
 import { renderNav } from './components/SidebarNav';
 import { renderInterviewCard } from './components/InterviewCard';
 import type { SectionId } from './config/framework';
+import { exportBigDoc } from './services/export.service';
+import { createTranscript, syncTranscriptToSupabase, loadTranscriptsFromSupabase, getRecordingSessionCount, incrementRecordingSession, MAX_RECORDING_SESSIONS } from './services/transcription.service';
+import { renderScriptManager, setScriptManagerCallbacks } from './components/ScriptManager';
 
-// ─── DOM REFERENCES ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ DOM REFERENCES Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const chatMessages = document.getElementById('chat-messages')!;
 const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement;
@@ -61,6 +69,12 @@ const processingOverlay = document.getElementById('processing-overlay')!;
 const processingTitle = document.getElementById('processing-title')!;
 const processingSubtitle = document.getElementById('processing-subtitle')!;
 const processingProgressBar = document.getElementById('processing-progress-bar')!;
+const processingPct = document.getElementById('processing-pct')!;
+const processingSteps = document.getElementById('processing-steps')!;
+
+// CSV elements
+const btnCsvUpload  = document.getElementById('btn-csv-upload') as HTMLButtonElement;
+const csvFileInput  = document.getElementById('csv-file-input') as HTMLInputElement;
 
 // Context inputs
 const ctxWebsite = document.getElementById('ctx-website') as HTMLInputElement;
@@ -123,20 +137,11 @@ const avatarInput = document.getElementById('avatar-input') as HTMLInputElement;
 const profileActivityFeed = document.getElementById('profile-activity-feed')!;
 let currentUserId: string | null = null;
 
-interface ContextPanel {
-  title: string;
-  subtitle: string;
-  body: string;
-}
-
-let collectedContextPayload = '';
-let collectedContextOverview = '';
-let collectedContextPanels: ContextPanel[] = [];
 let rightPanelView: 'brandscript' | 'context' = 'brandscript';
 
 function setRightPanelView(view: 'brandscript' | 'context'): void {
   rightPanelView = view;
-  const hasContext = !!collectedContextOverview && collectedContextPanels.length > 0;
+  const hasContext = !!state.contextOverview && state.contextPanels.length > 0;
 
   if (view === 'context' && hasContext) {
     contextSummaryPanel.classList.remove('hidden');
@@ -149,7 +154,7 @@ function setRightPanelView(view: 'brandscript' | 'context'): void {
   }
 }
 
-// ─── REFRESH ALL UI ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ REFRESH ALL UI Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function refreshUI(): void {
   renderNav(sectionNav, progressFill, progressPct, () => refreshUI(), startInterviewFlow);
@@ -159,7 +164,7 @@ function refreshUI(): void {
   }
 }
 
-// ─── INTERVIEW FLOW ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ INTERVIEW FLOW Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function startInterviewFlow(startSectionIndex = 0): void {
   setRightPanelView('brandscript');
@@ -186,13 +191,13 @@ function startInterviewFlow(startSectionIndex = 0): void {
           addSystemMessage({
             role: 'agent',
             content: `${FRAMEWORK[nextIndex - 1].icon} **${FRAMEWORK[nextIndex - 1].label}** section saved!\n\nReady for **${FRAMEWORK[nextIndex].label}**?`,
-            quickActions: [`Continue to ${FRAMEWORK[nextIndex].label} →`, 'Take a break — I\'ll chat instead'],
+            quickActions: [`Continue to ${FRAMEWORK[nextIndex].label} Ã¢â€ â€™`, 'Take a break Ã¢â‚¬â€ I\'ll chat instead'],
           });
         } else {
           addSystemMessage({
             role: 'agent',
-            content: `🎉 **All 8 sections complete!**\n\nYour B.I.G Doc is ready. Click **📥 PDF + Market Data** to download your complete strategy, or click ✨ **Refine** on any section to have me polish the content with AI.`,
-            quickActions: ['📥 Download PDF', '✨ Refine with AI'],
+            content: `Ã°Å¸Å½â€° **All 8 sections complete!**\n\nYour B.I.G Doc is ready. Click **Ã°Å¸â€œÂ¥ PDF + Market Data** to download your complete strategy, or click Ã¢Å“Â¨ **Refine** on any section to have me polish the content with AI.`,
+            quickActions: ['Ã°Å¸â€œÂ¥ Download PDF', 'Ã¢Å“Â¨ Refine with AI'],
           });
         }
       },
@@ -202,13 +207,26 @@ function startInterviewFlow(startSectionIndex = 0): void {
           ? `Here are my quick answers for the ${FRAMEWORK.find(s => s.id === sId)?.label} section. Please refine and expand these into polished, professional descriptions for the B.I.G Doc:\n\n${rawAnswer}`
           : `For ${fieldId}: ${rawAnswer}. Please refine this.`;
         handleUserInput(refinementPrompt);
+      },
+      // onPrevious
+      () => {
+        if (startSectionIndex > 0) {
+          startInterviewFlow(startSectionIndex - 1);
+        } else {
+          // Abort the interview and return to home
+          addSystemMessage({
+            role: 'agent',
+            content: `Interview paused. You can restart or continue discussing your brand here.`,
+            quickActions: ['Interview me section by section', 'Start with Context Upload'],
+          });
+        }
       }
     );
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }, 300);
 }
 
-// ─── HANDLE USER INPUT ──────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ HANDLE USER INPUT Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 async function handleUserInput(text: string): Promise<void> {
   if (!text.trim()) return;
@@ -219,8 +237,8 @@ async function handleUserInput(text: string): Promise<void> {
     startInterviewFlow(0);
     return;
   }
-  if (lower.startsWith('continue to ') && lower.includes('→')) {
-    const sectionName = text.replace('Continue to ', '').replace(' →', '').trim();
+  if (lower.startsWith('continue to ') && lower.includes('Ã¢â€ â€™')) {
+    const sectionName = text.replace('Continue to ', '').replace(' Ã¢â€ â€™', '').trim();
     const idx = FRAMEWORK.findIndex(s => s.label.toLowerCase() === sectionName.toLowerCase());
     if (idx >= 0) {
       startInterviewFlow(idx);
@@ -245,7 +263,7 @@ async function handleUserInput(text: string): Promise<void> {
     }
   }
 
-  const isTranscription = text.includes('📁 [Audio File') || text.includes('🎙️ [Audio Recording') || text.includes('🎙️ **');
+  const isTranscription = text.includes('Ã°Å¸â€œÂ [Audio File') || text.includes('Ã°Å¸Å½â„¢Ã¯Â¸Â [Audio Recording') || text.includes('Ã°Å¸Å½â„¢Ã¯Â¸Â **');
   const userMsg = { role: 'user' as const, content: isTranscription ? text.replace(/\n\n\[SYSTEM:.*\]$/g, '') : text };
   
   state.messages.push(userMsg);
@@ -263,8 +281,8 @@ async function handleUserInput(text: string): Promise<void> {
   showTyping(chatMessages);
 
   try {
-    // JSON mode call — returns typed { message, extractions }
-    const response = await callGroq(text, 2, collectedContextPayload);
+    // JSON mode call Ã¢â‚¬â€ returns typed { message, extractions }
+    const response = await callGroq(text, 2, state.contextPayload);
 
     removeTyping();
 
@@ -278,12 +296,14 @@ async function handleUserInput(text: string): Promise<void> {
 
   } catch (err) {
     removeTyping();
-    console.error('Groq API error:', err);
+    console.error('AI API error:', err);
     const error = err as Error;
-    let errContent = `⚠️ **AI Error**\n\n`;
-    if (error.message?.includes('API_KEY')) {
+    let errContent = `Ã¢Å¡Â Ã¯Â¸Â **AI Error**\n\n`;
+    if (error.message?.includes('API_KEY') || error.message?.includes('Missing Gemini API key')) {
       errContent += `The API key is invalid or missing. Check your \`.env\` file.`;
-    } else if (error.message?.includes('quota')) {
+    } else if (error.message?.includes('503') || error.message?.includes('UNAVAILABLE') || error.message?.includes('high demand')) {
+      errContent += `The AI model is currently busy. Please try again in a moment.`;
+    } else if (error.message?.includes('quota') || error.message?.includes('429') || error.message?.includes('rate_limit_exceeded')) {
       errContent += `Rate limit hit. Please wait a moment and try again.`;
     } else {
       errContent += `Something went wrong: ${error.message}\n\nPlease try again.`;
@@ -295,11 +315,12 @@ async function handleUserInput(text: string): Promise<void> {
 
   refreshUI();
   saveSession();
+  if (currentUserId) scheduleSaveToSupabase(currentUserId);
 }
 
-// ─── MESSAGE HELPER ─────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ MESSAGE HELPER Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
-function addSystemMessage(msg: ChatMessage): void {
+export function addSystemMessage(msg: ChatMessage): void {
   state.messages.push(msg);
   renderMessage(chatMessages, msg, handleUserInput);
 }
@@ -310,7 +331,7 @@ function setContextLoading(loading: boolean, title = 'Collecting context...', su
   ctxLoadingSubtitle.textContent = subtitle;
 }
 
-function summarizeContext(text: string, limit = 260): string {
+export function summarizeContext(text: string, limit = 260): string {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (!compact) return 'No summary available.';
   return compact.length > limit ? `${compact.slice(0, limit).trim()}...` : compact;
@@ -325,41 +346,53 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-function renderContextSummary(overview: string, panels: ContextPanel[]): void {
-  if (!overview || panels.length === 0) {
-    navContextSummary.classList.add('hidden');
-    contextSummaryOverview.textContent = '';
-    contextSummaryPanels.innerHTML = '';
-    setRightPanelView('brandscript');
-    return;
-  }
+export function renderContextSummary(overview: string, panels: ContextPanel[]): void {
+  // Premium overview card
+  contextSummaryOverview.innerHTML = `
+    <div class="ctx-summary-glass">
+      <div class="ctx-summary-header">
+        <div class="ctx-summary-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+          </svg>
+        </div>
+        <h3>Strategic Context</h3>
+      </div>
+      <div class="ctx-summary-text">${escapeHtml(overview)}</div>
+    </div>
+  `;
 
-  navContextSummary.classList.remove('hidden');
-  contextSummaryOverview.textContent = overview;
-
-  contextSummaryPanels.innerHTML = panels.map(panel => {
+  // Premium panels
+  contextSummaryPanels.innerHTML = panels.map((panel, idx) => {
     return `
-      <details class="context-preview-panel">
+      <details class="context-preview-panel" ${idx === 0 ? 'open' : ''}>
         <summary>
-          <span class="context-preview-title">${escapeHtml(panel.title)}</span>
-          <span class="context-preview-subtitle">${escapeHtml(panel.subtitle)}</span>
+          <div class="ctx-panel-header">
+            <span class="ctx-panel-title">${escapeHtml(panel.title)}</span>
+            <span class="ctx-panel-subtitle">${escapeHtml(panel.subtitle)}</span>
+          </div>
+          <svg class="ctx-panel-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
         </summary>
-        <div class="context-preview-body">${escapeHtml(panel.body)}</div>
+        <div class="context-preview-body">
+          <div class="ctx-body-content">${escapeHtml(panel.body)}</div>
+        </div>
       </details>
     `;
   }).join('');
 }
 
 function clearCollectedContext(): void {
-  collectedContextPayload = '';
-  collectedContextOverview = '';
-  collectedContextPanels = [];
+  state.contextPayload = '';
+  state.contextOverview = '';
+  state.contextPanels = [];
   renderContextSummary('', []);
 }
 
 function openContextSummaryPanel(): void {
-  if (!collectedContextOverview || collectedContextPanels.length === 0) return;
-  renderContextSummary(collectedContextOverview, collectedContextPanels);
+  if (!state.contextOverview || state.contextPanels.length === 0) return;
+  renderContextSummary(state.contextOverview, state.contextPanels);
   setRightPanelView('context');
   contextSummaryPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -374,6 +407,20 @@ async function handleContextIngestion(): Promise<void> {
   const services = ctxServices.value.trim();
   const country = ctxCountry.value.trim();
 
+  // Country, Industry, and Profession are ALWAYS compulsory
+  const missing: string[] = [];
+  if (!country) missing.push('Country');
+  if (!industry) missing.push('Industry');
+  if (!profession) missing.push('Profession');
+
+  if (missing.length > 0) {
+    addSystemMessage({
+      role: 'agent',
+      content: `Ã¢Å¡Â Ã¯Â¸Â Please select your **${missing.join(', ')}** Ã¢â‚¬â€ these are required for accurate market research in your B.I.G Doc.`,
+    });
+    return;
+  }
+
   if (!websiteUrl && !linkedinUrl && !noWebsite) {
     addSystemMessage({
       role: 'agent',
@@ -382,21 +429,11 @@ async function handleContextIngestion(): Promise<void> {
     return;
   }
 
-  if (noWebsite) {
-    const missing: string[] = [];
-    if (!industry) missing.push('Industry');
-    if (!profession) missing.push('Profession');
-    if (!services) missing.push('Services offered');
-    if (!country) missing.push('Country');
-
-    if (missing.length > 0) {
-      addSystemMessage({
-        role: 'agent',
-        content: `For businesses without a website, please complete: **${missing.join(', ')}**.`,
-      });
-      return;
-    }
-  }
+  // Save user context to state
+  state.userContext = { country, industry, profession, services };
+  state.contextPayload = '';
+  state.contextOverview = '';
+  state.contextPanels = [];
 
   clearCollectedContext();
   btnUseContext.disabled = true;
@@ -424,7 +461,7 @@ async function handleContextIngestion(): Promise<void> {
             totalChars += result.text.length;
             contextPanels.push({
               title: `${label} Context`,
-              subtitle: `${result.url} · ${result.text.length.toLocaleString()} chars`,
+              subtitle: `${result.url} Ã‚Â· ${result.text.length.toLocaleString()} chars`,
               body: result.text,
             });
           }
@@ -462,22 +499,22 @@ async function handleContextIngestion(): Promise<void> {
       return;
     }
 
-    collectedContextPayload = usableContext;
+    state.contextPayload = usableContext;
     const uniqueSources = Array.from(new Set(sourceLabels));
     const overview = `Generated overview from ${uniqueSources.length} source${uniqueSources.length === 1 ? '' : 's'} (${uniqueSources.join(', ')}), with about ${totalChars.toLocaleString()} characters of usable context. Click any panel to preview details. This context is now used as reference for future framework answers.`;
-    collectedContextOverview = overview;
-    collectedContextPanels = contextPanels.map(panel => ({
+    state.contextOverview = overview;
+    state.contextPanels = contextPanels.map(panel => ({
       ...panel,
       body: summarizeContext(panel.body, 1800),
     }));
 
     setContextLoading(false);
-    renderContextSummary(collectedContextOverview, collectedContextPanels);
+    renderContextSummary(state.contextOverview, state.contextPanels);
     openContextSummaryPanel();
 
     addSystemMessage({
       role: 'agent',
-      content: '✅ Context collected successfully. It is now saved as reference context for future framework answers and can be reviewed from **Context Summary** in the left navigation.',
+      content: 'Ã¢Å“â€¦ Context collected successfully. It is now saved as reference context for future framework answers and can be reviewed from **Context Summary** in the left navigation.',
     });
   } finally {
     setContextLoading(false);
@@ -486,7 +523,7 @@ async function handleContextIngestion(): Promise<void> {
   }
 }
 
-// ─── AUTHENTICATION ────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ AUTHENTICATION Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function showAuthError(msg: string, signup = false) {
   const el = signup ? authErrorSignup : authErrorEl;
@@ -555,7 +592,7 @@ btnSignup.addEventListener('click', async () => {
   btnSignup.textContent = 'Create Account';
   (btnSignup as HTMLButtonElement).disabled = false;
   if (error) showAuthError(error.message, true);
-  else showAuthError('✅ Account created! Check your email to confirm, then sign in.', true);
+  else showAuthError('Ã¢Å“â€¦ Account created! Check your email to confirm, then sign in.', true);
 });
 
 // Allow Enter key in auth inputs
@@ -578,6 +615,35 @@ setupAuthListener(async (session) => {
     const profile = await getProfile(session.user.id);
     const initials = getInitials(profile?.display_name || null, session.user.email || null);
     setAvatarUI(profile?.avatar_url || null, initials);
+    // Load brandscript from Supabase and merge with local
+    const loaded = await loadFromSupabase(session.user.id);
+    if (loaded) {
+      // Restore context dropdowns from Supabase data
+      if (state.userContext.country && ctxCountry) ctxCountry.value = state.userContext.country;
+      if (state.userContext.industry && ctxIndustry) ctxIndustry.value = state.userContext.industry;
+      if (state.userContext.profession && ctxProfession) ctxProfession.value = state.userContext.profession;
+      if (state.userContext.services && ctxServices) ctxServices.value = state.userContext.services;
+      refreshUI();
+    }
+    // Load transcripts from Supabase and sync recording session count
+    try {
+      const supaTranscripts = await loadTranscriptsFromSupabase(session.user.id);
+      if (supaTranscripts.length > 0) {
+        // Merge: keep Supabase as source of truth, but don't duplicate
+        const existingIds = new Set(state.transcripts.map(t => t.id));
+        for (const t of supaTranscripts) {
+          if (!existingIds.has(t.id)) {
+            state.transcripts.push(t);
+          }
+        }
+        // Sort newest first
+        state.transcripts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        saveSession();
+      }
+      await getRecordingSessionCount(session.user.id);
+    } catch (e) {
+      console.warn('Failed to load transcripts from Supabase:', e);
+    }
     // Log login event
     await logActivity(session.user.id, 'login', 'Signed in', session.user.email || '');
   } else {
@@ -586,15 +652,15 @@ setupAuthListener(async (session) => {
   }
 });
 
-// ─── CONTEXT PAGE EDITING ──────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ CONTEXT PAGE EDITING Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function updateCtxMeta() {
   const len = contextPageEdit.value.length;
-  const sources = collectedContextPanels.length;
+  const sources = state.contextPanels.length;
   ctxCharCount.textContent = `${len.toLocaleString()} chars`;
   contextEditorMeta.innerHTML = sources > 0
-    ? collectedContextPanels.map(p =>
-        `<span class="ctx-meta-pill">📄 ${p.title} <small style="opacity:0.6">${p.subtitle}</small></span>`
+    ? state.contextPanels.map(p =>
+        `<span class="ctx-meta-pill">Ã°Å¸â€œâ€ž ${p.title} <small style="opacity:0.6">${p.subtitle}</small></span>`
       ).join('')
     : '<span style="color:var(--text-muted)">No sources collected yet.</span>';
 }
@@ -611,23 +677,23 @@ ctxClearBtn.addEventListener('click', () => {
 });
 
 btnContextSave.addEventListener('click', () => {
-  collectedContextPayload = contextPageEdit.value.trim();
-  const len = collectedContextPayload.length;
-  collectedContextOverview = `Edited context summary — ${len.toLocaleString()} characters, ${collectedContextPanels.length} source(s).`;
-  renderContextSummary(collectedContextOverview, collectedContextPanels.length > 0 ? collectedContextPanels : [{
+  state.contextPayload = contextPageEdit.value.trim();
+  const len = state.contextPayload.length;
+  state.contextOverview = `Edited context summary Ã¢â‚¬â€ ${len.toLocaleString()} characters, ${state.contextPanels.length} source(s).`;
+  renderContextSummary(state.contextOverview, state.contextPanels.length > 0 ? state.contextPanels : [{
     title: 'Edited Context',
     subtitle: 'Manually edited by user',
-    body: summarizeContext(collectedContextPayload, 1800)
+    body: summarizeContext(state.contextPayload, 1800)
   }]);
   contextPage.classList.add('hidden');
-  addSystemMessage({ role: 'agent', content: `✅ Context saved — **${len.toLocaleString()} characters** of context will be used by Brandy.` });
+  addSystemMessage({ role: 'agent', content: `Ã¢Å“â€¦ Context saved Ã¢â‚¬â€ **${len.toLocaleString()} characters** of context will be used by Brandy.` });
 });
 
 btnContextCancel.addEventListener('click', () => {
   contextPage.classList.add('hidden');
 });
 
-// ─── EVENT LISTENERS ────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ EVENT LISTENERS Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 btnSend.addEventListener('click', () => handleUserInput(chatInput.value));
 
@@ -658,7 +724,7 @@ btnUseContext.addEventListener('click', () => {
 });
 
 navContextSummary.addEventListener('click', () => {
-  contextPageEdit.value = collectedContextPayload;
+  contextPageEdit.value = state.contextPayload;
   updateCtxMeta();
   contextPage.classList.remove('hidden');
 });
@@ -674,14 +740,77 @@ btnReset.addEventListener('click', () => {
   }
 });
 
-// ─── DOWNLOAD B.I.G DOC PDF ─────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ PROCESSING OVERLAY HELPERS Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+
+let currentStepEl: HTMLElement | null = null;
+
+function updateProgress(pct: number, subtitle?: string): void {
+  const clamped = Math.min(100, Math.max(0, Math.round(pct)));
+  processingPct.textContent = `${clamped}%`;
+  processingProgressBar.style.width = `${clamped}%`;
+  if (subtitle) processingSubtitle.textContent = subtitle;
+}
+
+function addProcessingStep(text: string, pct?: number): void {
+  // Mark previous step as done
+  if (currentStepEl) {
+    currentStepEl.classList.remove('active');
+    currentStepEl.classList.add('done');
+    const icon = currentStepEl.querySelector('.processing-step-icon');
+    if (icon) icon.textContent = 'Ã¢Å“â€œ';
+  }
+  // Create new active step
+  const step = document.createElement('div');
+  step.className = 'processing-step active';
+  step.innerHTML = `
+    <div class="processing-step-icon">Ã¢â€”Â</div>
+    <div class="processing-step-text">${text}</div>
+    ${pct !== undefined ? `<div class="processing-step-pct">${Math.round(pct)}%</div>` : ''}
+  `;
+  processingSteps.appendChild(step);
+  processingSteps.scrollTop = processingSteps.scrollHeight;
+  currentStepEl = step;
+}
+
+function completeAllSteps(): void {
+  if (currentStepEl) {
+    currentStepEl.classList.remove('active');
+    currentStepEl.classList.add('done');
+    const icon = currentStepEl.querySelector('.processing-step-icon');
+    if (icon) icon.textContent = 'Ã¢Å“â€œ';
+    currentStepEl = null;
+  }
+}
+
+function resetProcessingOverlay(): void {
+  processingSteps.innerHTML = '';
+  currentStepEl = null;
+  processingPct.textContent = '0%';
+  processingProgressBar.style.width = '0%';
+}
+
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ DOWNLOAD B.I.G DOC PDF Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 btnDownloadPdf.addEventListener('click', async () => {
   const stats = getProgressStats();
   if (stats.pct !== 100) {
     addSystemMessage({
       role: 'agent',
-      content: `⚠️ **Action Not Allowed**\n\nPlease complete all 8 framework sections before exporting the B.I.G. Doc. You are currently at ${stats.pct}% completion.`,
+      content: `Ã¢Å¡Â Ã¯Â¸Â **Action Not Allowed**\n\nPlease complete all 8 framework sections before exporting the B.I.G. Doc. You are currently at ${stats.pct}% completion.`,
+    });
+    return;
+  }
+
+  // Get country/industry/profession from state or DOM fallback
+  const country = state.userContext.country || ctxCountry.value.trim() || 'South Africa';
+  const industry = state.userContext.industry || ctxIndustry.value.trim() || '';
+  const profession = state.userContext.profession || ctxProfession.value.trim() || '';
+  const services = state.userContext.services || ctxServices.value.trim() || '';
+
+  if (!country || !industry || !profession) {
+    addSystemMessage({
+      role: 'agent',
+      content: 'Ã¢Å¡Â Ã¯Â¸Â Please select your **Country**, **Industry**, and **Profession** in the Context Sources panel before generating your B.I.G Doc. This data is needed for accurate market research.',
     });
     return;
   }
@@ -691,63 +820,146 @@ btnDownloadPdf.addEventListener('click', async () => {
   const originalLabel = btnDownloadPdf.innerHTML;
   btnDownloadPdf.innerHTML = `
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-    Generating market data...`;
+    Researching market...`;
 
-  // Show processing overlay
-  processingTitle.textContent = 'Generating Market Intelligence';
-  processingSubtitle.textContent = 'Analyzing your brand data with AI...';
-  processingProgressBar.style.width = '20%';
+  // Reset and show processing overlay
+  resetProcessingOverlay();
+  processingTitle.textContent = 'Researching Your Market';
+  processingSubtitle.textContent = `Preparing market research for ${industry} in ${country}...`;
   processingOverlay.classList.remove('hidden');
+  updateProgress(2);
+  addProcessingStep(`Initializing research for ${country}`, 2);
 
   try {
-    // 1. Generate market data with AI
-    const marketData = await generateMarketData(collectedContextPayload);
+    // 1. Generate market data with Firecrawl search + AI synthesis
+    addProcessingStep('Connecting to Firecrawl search engine...', 5);
+    updateProgress(5);
 
-    // Update overlay
-    processingTitle.textContent = 'Building Your PDF';
-    processingSubtitle.textContent = 'Assembling B.I.G Doc with market intelligence...';
-    processingProgressBar.style.width = '70%';
-
-    // Small delay so the user sees the progress update
-    await new Promise(r => setTimeout(r, 600));
-
-    // 2. Generate and download the PDF
-    generateBigDocPdf({
-      brandscript: state.brandscript,
-      contextPayload: collectedContextPayload,
-      marketData,
+    const result: GenerateMarketDataResult = await generateMarketData({
+      brandContext: state.contextPayload,
+      country,
+      industry,
+      profession,
+      services,
+      onProgress: (step, pct) => {
+        const totalPct = Math.round(5 + pct * 0.6); // 5% Ã¢â€ â€™ 65%
+        updateProgress(totalPct, step);
+        addProcessingStep(step, totalPct);
+      },
     });
 
-    processingProgressBar.style.width = '100%';
+    const { marketData, firecrawlResults } = result;
+    const sourceCount = firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0);
+
+    // Phase 2: Building the report
+    processingTitle.textContent = 'Building Your Report';
+    addProcessingStep(`${sourceCount} web sources collected Ã¢â‚¬â€ assembling B.I.G Doc...`, 70);
+    updateProgress(70, 'Generating HTML report with market intelligence...');
+
+    await new Promise(r => setTimeout(r, 500));
+
+    // 2. Generate and download the HTML
+    addProcessingStep('Rendering B.I.G Doc with brand strategy + market data...', 75);
+    updateProgress(75);
+    const htmlReport = generateHtmlDoc({
+      brandscript: state.brandscript,
+      contextPayload: state.contextPayload,
+      marketData,
+    });
+    
+    // Create Blob and trigger download
+    addProcessingStep('Preparing download file...', 82);
+    updateProgress(82);
+    
+    
+    const now = new Date();
+    const formattedDate = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
+    const bName = state.brandscript.name?.purpose?.split('.')[0]?.trim() || 'Your Brand';
+    const safeName = bName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+$/g, '');
+    const fileName = `BIG-Doc-${safeName}-${formattedDate}.pdf`;
+    
+    const opt = {
+      margin:       0,
+      filename:     fileName,
+      image:        { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' } as any
+    };
+
+    await html2pdf().set(opt).from(htmlReport).save();
+
+    addProcessingStep('File downloaded successfully ✔', 88);
+    updateProgress(88);
+
+    // 3. Save to Supabase (market research + document export)
+    if (currentUserId) {
+      addProcessingStep('Saving market research to database...', 90);
+      updateProgress(90);
+
+      // Save market research
+      const mrResult = await saveMarketResearch({
+        user_id: currentUserId,
+        country,
+        industry,
+        profession,
+        firecrawl_results: firecrawlResults,
+        market_data: marketData,
+      });
+
+      addProcessingStep('Saving document snapshot...', 95);
+      updateProgress(95);
+
+      // Save document export snapshot
+      await saveDocumentExport({
+        user_id: currentUserId,
+        market_research_id: mrResult?.id || undefined,
+        brand_name: bName,
+        brandscript_snapshot: state.brandscript,
+        market_data_snapshot: marketData,
+        context_snapshot: state.contextPayload,
+        file_name: fileName,
+      });
+    }
+
+    // Complete!
+    processingTitle.textContent = 'Report Complete!';
+    addProcessingStep(`B.I.G Doc generated with ${sourceCount} real sources`, 100);
+    updateProgress(100, 'Your market-researched brand strategy document is ready.');
+    completeAllSteps();
+
+    const sourceMsg = sourceCount > 0
+      ? ` Research was grounded in **${sourceCount} real web sources** specific to ${country}.`
+      : '';
 
     addSystemMessage({
       role: 'agent',
-      content: '📥 **B.I.G Doc PDF downloaded!** Your document includes your brand strategy framework and AI-generated market intelligence.',
+      content: `🔥 **B.I.G Doc HTML report downloaded!** Your document includes your brand strategy framework and market intelligence for **${industry}** in **${country}**.${sourceMsg} Open it in any browser and print to PDF.`,
     });
 
     // Log activity
     if (currentUserId) {
-      logActivity(currentUserId, 'pdf_upload', 'B.I.G Doc PDF exported', 'PDF with market data');
+      logActivity(currentUserId, 'pdf_upload', 'B.I.G Doc HTML exported', `${country} · ${industry} · ${sourceCount} sources`);
     }
 
   } catch (err) {
     console.error('PDF generation error:', err);
+    completeAllSteps();
     addSystemMessage({
       role: 'agent',
-      content: `⚠️ **PDF Generation Failed**\n\n${(err as Error).message || 'Something went wrong. Please try again.'}`,
+      content: `⚠ **PDF Generation Failed**\n\n${(err as Error).message || 'Something went wrong. Please try again.'}`,
     });
   } finally {
-    // Reset button and hide overlay
+    // Reset button and hide overlay after a short delay
     setTimeout(() => {
       processingOverlay.classList.add('hidden');
-      processingProgressBar.style.width = '0%';
-    }, 800);
+      resetProcessingOverlay();
+    }, 1200);
     btnDownloadPdf.disabled = false;
     btnDownloadPdf.innerHTML = originalLabel;
   }
 });
 
-// ─── TRANSCRIPTION MODAL ────────────────────────────────────────────
+// ──────────────── TRANSCRIPTION MODAL ──────────────────────────────────────
 
 function showTranscriptionModal(transcript: string) {
   pendingTranscriptText = transcript;
@@ -770,14 +982,6 @@ function submitTranscription() {
   handleUserInput(finalText + instruction);
 }
 
-modalSave.addEventListener('click', submitTranscription);
-modalSkip.addEventListener('click', () => {
-  transcriptionModal.classList.add('hidden');
-  const instruction = '\n\n[SYSTEM: Review the preceding transcript. If it contains new business logic, please aggressively update ALL applicable framework input boxes in the B.I.G Doc that we have not yet established or that need revision. Extract and return these updates.]';
-  handleUserInput(pendingTranscriptText + instruction);
-});
-modalClose.addEventListener('click', () => transcriptionModal.classList.add('hidden'));
-
 // ─── AUDIO: MIC RECORDING ───────────────────────────────────────────
 
 const MAX_RECORDING_SECONDS = 5 * 60; // 5 minutes
@@ -794,7 +998,19 @@ function startRecordingLimitBar() {
       clearInterval(recordingLimitTimer!);
       recordingLimitTimer = null;
       stopRecording(true, recordingElements,
-        (text) => showTranscriptionModal(`🎙️ [Audio Recording — 5 min limit reached]\n\n${text}`),
+        (text) => {
+          const transcript = createTranscript({
+            name: `Recording ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} (5m limit)`,
+            text,
+            source: 'recording',
+            durationSeconds: MAX_RECORDING_SECONDS,
+          });
+          if (currentUserId) {
+            syncTranscriptToSupabase(currentUserId, transcript);
+            incrementRecordingSession(currentUserId);
+          }
+          showTranscriptionModal(`[Audio Recording — 5 min limit reached]\n\n${text}`);
+        },
         addSystemMessage
       );
     }
@@ -814,11 +1030,30 @@ const recordingElements = {
   canvas: waveformCanvas,
 };
 
-btnMic.addEventListener('click', () => {
+btnMic.addEventListener('click', async () => {
   if (audioState.isRecording) {
     stopRecordingLimitBar();
-    stopRecording(true, recordingElements, (text) => showTranscriptionModal(`🎙️ [Audio Recording]\n\n${text}`), addSystemMessage);
+    stopRecording(true, recordingElements, (text) => {
+      const transcript = createTranscript({
+        name: `Recording ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
+        text,
+        source: 'recording',
+      });
+      if (currentUserId) {
+        syncTranscriptToSupabase(currentUserId, transcript);
+        incrementRecordingSession(currentUserId);
+      }
+      showTranscriptionModal(`[Audio Recording]\n\n${text}`);
+    }, addSystemMessage);
   } else {
+    // Check 24-session limit
+    if (state.recordingSessionCount >= MAX_RECORDING_SESSIONS) {
+      addSystemMessage({
+        role: 'agent',
+        content: `You've reached the maximum of **${MAX_RECORDING_SESSIONS} recording sessions**. Please delete old recordings or upgrade your plan to record more.`,
+      });
+      return;
+    }
     startRecording(recordingElements, addSystemMessage);
     startRecordingLimitBar();
   }
@@ -826,31 +1061,61 @@ btnMic.addEventListener('click', () => {
 
 btnStopRecording.addEventListener('click', () => {
   stopRecordingLimitBar();
-  stopRecording(true, recordingElements, (text) => showTranscriptionModal(`🎙️ [Audio Recording]\n\n${text}`), addSystemMessage);
+  stopRecording(true, recordingElements, (text) => {
+    const transcript = createTranscript({
+      name: `Recording ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`,
+      text,
+      source: 'recording',
+    });
+    if (currentUserId) {
+      syncTranscriptToSupabase(currentUserId, transcript);
+      incrementRecordingSession(currentUserId);
+    }
+    showTranscriptionModal(`[Audio Recording]\n\n${text}`);
+  }, addSystemMessage);
 });
 
 btnCancelRecording.addEventListener('click', () => {
   stopRecordingLimitBar();
   stopRecording(false, recordingElements, handleUserInput, addSystemMessage);
-  addSystemMessage({ role: 'agent', content: `🎙️ Recording cancelled.` });
+  addSystemMessage({ role: 'agent', content: `Recording cancelled.` });
 });
 
-// ─── AUDIO & PDF: FILE UPLOAD ───────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ AUDIO & PDF: FILE UPLOAD Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 async function processFileSelection(file: File) {
   if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
     const MAX_PDF_SIZE = 5 * 1024 * 1024;
     if (file.size > MAX_PDF_SIZE) {
-      addSystemMessage({ role: 'agent', content: `❌ The PDF file is too large! Maximum allowed size is 5MB.` });
+      addSystemMessage({ role: 'agent', content: `Ã¢ÂÅ’ The PDF file is too large! Maximum allowed size is 5MB.` });
       return;
     }
     if (currentUserId) logActivity(currentUserId, 'pdf_upload', `PDF: ${file.name}`, `${(file.size/1024).toFixed(0)} KB`, file.size);
     await processPdfFile(file);
-  } else if (file.type.startsWith('audio/')) {
+  } else if (file.name.toLowerCase().endsWith('.md') || file.name.toLowerCase().endsWith('.markdown')) {
+    if (currentUserId) logActivity(currentUserId, 'file_upload', `Markdown: ${file.name}`, `${(file.size/1024).toFixed(0)} KB`, file.size);
+    await processMarkdownFile(file);
+  } else if (file.name.toLowerCase().endsWith('.json') || file.type === 'application/json') {
+    if (currentUserId) logActivity(currentUserId, 'file_upload', `JSON: ${file.name}`, `${(file.size/1024).toFixed(0)} KB`, file.size);
+    await processJsonFile(file);
+  } else if (isAcceptedAudioFile(file)) {
     if (currentUserId) logActivity(currentUserId, 'file_upload', `Audio: ${file.name}`, `${(file.size/1024).toFixed(0)} KB`, file.size);
-    processAudioFile(file, processingOverlay, processingTitle, processingSubtitle, processingProgressBar, handleUserInput, addSystemMessage);
+    processAudioFile(file, processingOverlay, processingTitle, processingSubtitle, processingProgressBar,
+      (text) => {
+        // After transcription, save as a transcript script
+        const transcript = createTranscript({
+          name: file.name.replace(/\.[^.]+$/, ''),
+          text: text.replace(/^📁 \[Audio File:.*\]\n\n/, ''),
+          source: 'upload',
+          fileName: file.name,
+        });
+        if (currentUserId) syncTranscriptToSupabase(currentUserId, transcript);
+        showTranscriptionModal(text);
+      },
+      addSystemMessage
+    );
   } else {
-    addSystemMessage({ role: 'agent', content: `❌ Unsupported file type. Please upload audio or a PDF.` });
+    addSystemMessage({ role: 'agent', content: `🚫 Unsupported file type. Please upload audio (mp3, flac, aac, aiff, wav), PDF, JSON, or Markdown.` });
   }
 }
 
@@ -866,27 +1131,126 @@ async function processPdfFile(file: File) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
         const strings = content.items.map((item: any) => item.str);
-        fullText += strings.join(" ") + "\\n";
+        fullText += strings.join(" ") + "\n";
     }
     
     // Save as context
-    collectedContextPayload += "\\n\\n### IMPORTED PDF: " + file.name + "\\n" + fullText;
-    collectedContextOverview = `Added imported PDF "${file.name}" to context.`;
-    collectedContextPanels.push({
+    state.contextPayload += "\n\n### IMPORTED PDF: " + file.name + "\n" + fullText;
+    state.contextOverview = `Added imported PDF "${file.name}" to context.`;
+    state.contextPanels.push({
       title: 'PDF Document',
       subtitle: file.name,
       body: summarizeContext(fullText, 1800)
     });
     
     // Refresh context summary UI
-    renderContextSummary(collectedContextOverview, collectedContextPanels);
+    renderContextSummary(state.contextOverview, state.contextPanels);
     
     addSystemMessage({ 
       role: 'agent', 
       content: `✅ Successfully extracted text from **${file.name}**. It's now added to your Context Summary!` 
     });
   } catch (error: any) {
-    addSystemMessage({ role: 'agent', content: `❌ Failed to extract PDF text: ${error.message}` });
+    addSystemMessage({ role: 'agent', content: `🚫 Failed to extract PDF text: ${error.message}` });
+  } finally {
+    processingOverlay.classList.add('hidden');
+  }
+}
+
+async function analyseImportedDocument(fileName: string, documentText: string, documentType: 'Markdown' | 'JSON'): Promise<void> {
+  const trimmed = documentText.trim().slice(0, 6000);
+  if (!trimmed) return;
+
+  const prompt = `You are Brandy, the VMV8 Brand Strategy Agent.
+
+The user has uploaded a ${documentType} document named "${fileName}".
+Analyze it as strategic brand and market-research context.
+
+What to do:
+1. Summarize the most important business, audience, offer, positioning, competitor, and market signals.
+2. Extract any confident B.I.G Doc fields you can infer from the document.
+3. Highlight any concrete market-research clues, metrics, risks, opportunities, or customer segments.
+4. Keep your response concise, polished, and actionable.
+
+Document:
+${trimmed}`;
+
+  const response = await callGroq(prompt, 2, state.contextPayload);
+  applyExtractions(response.extractions);
+
+  if (response.message?.trim()) {
+    state.contextPayload += `\n\n### BRANDY ANALYSIS: ${fileName}\n${response.message.trim()}`;
+    state.contextPanels.push({
+      title: 'Brandy Analysis',
+      subtitle: fileName,
+      body: summarizeContext(response.message, 1800),
+    });
+    renderContextSummary(state.contextOverview, state.contextPanels);
+    addSystemMessage({
+      role: 'agent',
+      content: `📘 **Brandy analyzed ${fileName}.**\n\n${response.message}`,
+    });
+  }
+}
+
+async function processMarkdownFile(file: File) {
+  processingTitle.textContent = "Processing Markdown";
+  processingSubtitle.textContent = "Reading and analyzing content...";
+  processingOverlay.classList.remove('hidden');
+  try {
+    const text = await file.text();
+
+    state.contextPayload += `\n\n### IMPORTED MARKDOWN: ${file.name}\n${text}`;
+    state.contextOverview = `Added imported Markdown "${file.name}" to context.`;
+    state.contextPanels.push({
+      title: 'Markdown Document',
+      subtitle: file.name,
+      body: summarizeContext(text, 1800)
+    });
+
+    renderContextSummary(state.contextOverview, state.contextPanels);
+
+    await analyseImportedDocument(file.name, text, 'Markdown');
+
+    addSystemMessage({
+      role: 'agent',
+      content: `Ã¢Å“â€¦ Successfully imported Markdown from **${file.name}**. It's now added to your Context Summary and queued for market-research analysis!`
+    });
+  } catch (error: any) {
+    addSystemMessage({ role: 'agent', content: `Ã¢ÂÅ’ Failed to read Markdown file: ${error.message}` });
+  } finally {
+    processingOverlay.classList.add('hidden');
+  }
+}
+
+async function processJsonFile(file: File) {
+  processingTitle.textContent = "Processing JSON";
+  processingSubtitle.textContent = "Parsing and analyzing structured data...";
+  processingOverlay.classList.remove('hidden');
+  try {
+    const text = await file.text();
+    const cleaned = text.replace(/```json\n?/gi, '').replace(/```/g, '').trim();
+    const json = JSON.parse(cleaned);
+    const prettyJson = JSON.stringify(json, null, 2);
+
+    state.contextPayload += `\n\n### IMPORTED JSON: ${file.name}\n${prettyJson}`;
+    state.contextOverview = `Added imported JSON "${file.name}" to context.`;
+    state.contextPanels.push({
+      title: 'JSON Document',
+      subtitle: file.name,
+      body: summarizeContext(prettyJson, 1800)
+    });
+
+    renderContextSummary(state.contextOverview, state.contextPanels);
+
+    await analyseImportedDocument(file.name, prettyJson, 'JSON');
+
+    addSystemMessage({
+      role: 'agent',
+      content: `Ã¢Å“â€¦ Successfully imported JSON from **${file.name}**. It's now added to your Context Summary and queued for market-research analysis!`
+    });
+  } catch (error: any) {
+    addSystemMessage({ role: 'agent', content: `Ã¢ÂÅ’ Failed to parse JSON file: ${error.message}` });
   } finally {
     processingOverlay.classList.add('hidden');
   }
@@ -899,6 +1263,21 @@ fileInput.addEventListener('change', (e) => {
     processFileSelection(target.files[0]);
   }
   fileInput.value = '';
+});
+
+// --- CSV: ANALYTICS UPLOAD ---
+
+btnCsvUpload.addEventListener('click', () => csvFileInput.click());
+csvFileInput.addEventListener('change', (e) => {
+  const target = e.target as HTMLInputElement;
+  if (target.files && target.files.length > 0) {
+    processCSVFile(
+      target.files[0],
+      (msg) => addSystemMessage(msg),
+      (msg) => addSystemMessage(msg)
+    );
+  }
+  csvFileInput.value = '';
 });
 
 // Drag & Drop
@@ -924,13 +1303,36 @@ chatInputArea.addEventListener('drop', (e) => {
   }
 });
 
-// ─── WELCOME MESSAGE ────────────────────────────────────────────────
+// --- SCRIPTS PAGE ---
+
+const scriptsPage = document.getElementById('scripts-page');
+const btnScripts = document.getElementById('btn-scripts');
+const btnScriptsClose = document.getElementById('btn-scripts-close');
+const scriptsContainer = document.getElementById('scripts-list-container');
+
+if (btnScripts) {
+  btnScripts.addEventListener('click', () => {
+    if (scriptsPage) {
+      scriptsPage.classList.remove('hidden');
+      setScriptManagerCallbacks(refreshUI, currentUserId);
+      if (scriptsContainer) renderScriptManager(scriptsContainer);
+    }
+  });
+}
+
+if (btnScriptsClose) {
+  btnScriptsClose.addEventListener('click', () => {
+    if (scriptsPage) scriptsPage.classList.add('hidden');
+  });
+}
+
+// --- WELCOME SCREEN ---
 
 function showWelcome(): void {
   chatMessages.innerHTML = `
     <div class="welcome-card">
-      <h1>Build Your Brand Strategy</h1>
-      <p>I'm <strong>Brandy</strong>, your AI Brand Strategist powered by the VMV8 framework. Choose how you'd like to build your <strong>B.I.G Doc</strong> — guided interview, free chat, audio recording, or paste a transcript.</p>
+      <h1>Build Your B.I.G Doc</h1>
+      <p>Let Brandy guide you through the VMV8 framework â€” 8 sections that define your brand's identity, voice, and strategy.</p>
       <div class="welcome-sections">
         ${FRAMEWORK.map(s => `
           <div class="welcome-section-chip">
@@ -945,18 +1347,18 @@ function showWelcome(): void {
   setTimeout(() => {
     addSystemMessage({
       role: 'agent',
-      content: `Welcome! 👋 I'm **Brandy**, your VMV8 Brand Strategy Agent.\n\nI'll help you build your **B.I.G Doc** (Brand Identity Guiding Document) across **8 sections**.\n\nHow would you like to get started?`,
+      content: `Welcome! I'm **Brandy**, your VMV8 Brand Strategy Agent.\n\nI'll help you build your **B.I.G Doc** (Brand Identity Guiding Document) across **8 sections**.\n\nHow would you like to get started?`,
       quickActions: [
-        '📝 Guided Interview (recommended)',
-        '🎙️ Record a meeting',
-        '📋 Paste a transcript',
-        '💬 Free chat',
+        'Guided Interview (recommended)',
+        'Record a meeting',
+        'Paste a transcript',
+        'Free chat',
       ],
     });
   }, 500);
 }
 
-// ─── INITIALIZE ─────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ INITIALIZE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const hadSession = loadSession();
 refreshUI();
@@ -973,13 +1375,13 @@ if (hadSession && hasExistingData()) {
 
   chatMessages.innerHTML = `
     <div class="welcome-card">
-      <h1>Welcome Back! 🌋</h1>
+      <h1>Welcome Back! Ã°Å¸Å’â€¹</h1>
       <p>Your previous session has been restored. You have <strong>${filled}/${totalFields}</strong> fields completed in your B.I.G Doc.</p>
       <div class="welcome-sections">
         ${FRAMEWORK.map(s => `
           <div class="welcome-section-chip">
             <div class="welcome-chip-dot" style="background: ${s.color}"></div>
-            ${s.icon} ${s.label} — ${getFilledCount(s.id)}/${s.fields.length}
+            ${s.icon} ${s.label} Ã¢â‚¬â€ ${getFilledCount(s.id)}/${s.fields.length}
           </div>
         `).join('')}
       </div>
@@ -987,16 +1389,16 @@ if (hadSession && hasExistingData()) {
   `;
 
   const quickActions = [
-    nextLabel ? `📝 Continue ${nextLabel} section` : '📄 Export B.I.G Doc',
-    '📝 Guided Interview (restart)',
-    '💬 Free chat',
-    '🎙️ Record audio',
+    nextLabel ? `Ã°Å¸â€œÂ Continue ${nextLabel} section` : 'Ã°Å¸â€œâ€ž Export B.I.G Doc',
+    'Ã°Å¸â€œÂ Guided Interview (restart)',
+    'Ã°Å¸â€™Â¬ Free chat',
+    'Ã°Å¸Å½â„¢Ã¯Â¸Â Record audio',
   ];
 
   setTimeout(() => {
     addSystemMessage({
       role: 'agent',
-      content: `Welcome back! 👋 Your B.I.G Doc session has been restored — **${filled}/${totalFields}** fields filled (${pct}%).\n\nYou can continue, start the guided interview, or chat freely.`,
+      content: `Welcome back! Ã°Å¸â€˜â€¹ Your B.I.G Doc session has been restored Ã¢â‚¬â€ **${filled}/${totalFields}** fields filled (${pct}%).\n\nYou can continue, start the guided interview, or chat freely.`,
       quickActions,
     });
   }, 400);
@@ -1015,8 +1417,8 @@ document.addEventListener('click', (e) => {
     startInterviewFlow(0);
     return;
   }
-  if (lower.startsWith('📝 continue ') && lower.includes('section')) {
-    const sectionName = action.replace('📝 Continue ', '').replace(' section', '').trim();
+  if (lower.startsWith('Ã°Å¸â€œÂ continue ') && lower.includes('section')) {
+    const sectionName = action.replace('Ã°Å¸â€œÂ Continue ', '').replace(' section', '').trim();
     const idx = FRAMEWORK.findIndex(s => s.label.toLowerCase() === sectionName.toLowerCase());
     if (idx >= 0) {
       startInterviewFlow(idx);
@@ -1025,10 +1427,10 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// ─── PROFILE PAGE ────────────────────────────────────────────────────
+// Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ PROFILE PAGE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const ACTIVITY_ICONS: Record<string, string> = {
-  prompt: '💬', transcription: '🎙️', file_upload: '📁', pdf_upload: '📄', login: '🔑'
+  prompt: 'Ã°Å¸â€™Â¬', transcription: 'Ã°Å¸Å½â„¢Ã¯Â¸Â', file_upload: 'Ã°Å¸â€œÂ', pdf_upload: 'Ã°Å¸â€œâ€ž', login: 'Ã°Å¸â€â€˜'
 };
 const ACTIVITY_LABELS: Record<string, string> = {
   prompt: 'Prompt sent', transcription: 'Audio transcribed', file_upload: 'Audio file uploaded',
@@ -1070,7 +1472,7 @@ function renderActivityFeed(activities: any[]) {
     return;
   }
   profileActivityFeed.innerHTML = activities.map(a => {
-    const icon = ACTIVITY_ICONS[a.type] || '◆';
+    const icon = ACTIVITY_ICONS[a.type] || 'Ã¢â€”â€ ';
     const label = a.label || ACTIVITY_LABELS[a.type] || a.type;
     const time = new Date(a.created_at).toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
     return `
@@ -1098,7 +1500,7 @@ async function openProfilePage() {
 
   // Auth info
   const { data: { user } } = await supabase.auth.getUser();
-  profileEmail.textContent = user?.email || '—';
+  profileEmail.textContent = user?.email || 'Ã¢â‚¬â€';
   profileJoined.textContent = user?.created_at
     ? `Joined ${new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
     : '';
@@ -1159,7 +1561,7 @@ btnProfileSave.addEventListener('click', async () => {
   (btnProfileSave as HTMLButtonElement).disabled = false;
   btnProfileSave.textContent = 'Save Profile';
   if (result) {
-    profileSaveMsg.textContent = '✅ Profile saved!';
+    profileSaveMsg.textContent = 'Ã¢Å“â€¦ Profile saved!';
     profileSaveMsg.classList.remove('hidden');
     // Update header initials if name changed
     const initials = getInitials(result.display_name, null);
@@ -1167,7 +1569,7 @@ btnProfileSave.addEventListener('click', async () => {
     profileAvatarInitials.textContent = initials;
     setTimeout(() => profileSaveMsg.classList.add('hidden'), 3000);
   } else {
-    profileSaveMsg.textContent = '❌ Save failed. Username may already be taken.';
+    profileSaveMsg.textContent = 'Ã¢ÂÅ’ Save failed. Username may already be taken.';
     profileSaveMsg.style.color = '#FF6B6B';
     profileSaveMsg.classList.remove('hidden');
   }
@@ -1178,7 +1580,7 @@ avatarInput.addEventListener('change', async () => {
   if (!currentUserId || !avatarInput.files?.length) return;
   const file = avatarInput.files[0];
   if (file.size > 2 * 1024 * 1024) {
-    profileSaveMsg.textContent = '❌ Image must be under 2MB.';
+    profileSaveMsg.textContent = 'Ã¢ÂÅ’ Image must be under 2MB.';
     profileSaveMsg.style.color = '#FF6B6B';
     profileSaveMsg.classList.remove('hidden');
     return;
@@ -1195,12 +1597,12 @@ avatarInput.addEventListener('change', async () => {
 
   if (url) {
     setAvatarUI(url, getInitials(profileDisplayName.value || null, null));
-    profileSaveMsg.textContent = '✅ Photo updated!';
+    profileSaveMsg.textContent = 'Ã¢Å“â€¦ Photo updated!';
     profileSaveMsg.style.color = '';
     profileSaveMsg.classList.remove('hidden');
     setTimeout(() => profileSaveMsg.classList.add('hidden'), 3000);
   } else {
-    profileSaveMsg.textContent = '❌ Photo upload failed. Check browser console for details.';
+    profileSaveMsg.textContent = 'Ã¢ÂÅ’ Photo upload failed. Check browser console for details.';
     profileSaveMsg.style.color = '#FF6B6B';
     profileSaveMsg.classList.remove('hidden');
   }

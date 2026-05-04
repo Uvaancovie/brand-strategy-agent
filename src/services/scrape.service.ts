@@ -1,5 +1,8 @@
 // ─── SCRAPE SERVICE ─────────────────────────────────────────────────
 // Fetches readable text from website and public LinkedIn URLs
+// Uses Firecrawl as primary, falls back to Jina Reader
+
+import { firecrawlScrape, isFirecrawlConfigured } from './firecrawl.service';
 
 export interface ScrapeResult {
   source: 'website' | 'linkedin';
@@ -9,7 +12,7 @@ export interface ScrapeResult {
   error?: string;
 }
 
-const MAX_TEXT = 12000;
+const MAX_TEXT = 15000;
 
 function ensureUrl(raw: string): string {
   const value = raw.trim();
@@ -17,6 +20,8 @@ function ensureUrl(raw: string): string {
   if (/^https?:\/\//i.test(value)) return value;
   return `https://${value}`;
 }
+
+// ─── JINA FALLBACK ──────────────────────────────────────────────────
 
 function toJinaProxyUrl(url: string): string {
   const normalized = ensureUrl(url);
@@ -32,7 +37,7 @@ function cleanText(text: string): string {
     .slice(0, MAX_TEXT);
 }
 
-async function fetchReadable(url: string): Promise<string> {
+async function fetchWithJina(url: string): Promise<string> {
   const proxyUrl = toJinaProxyUrl(url);
   const res = await fetch(proxyUrl);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -40,6 +45,24 @@ async function fetchReadable(url: string): Promise<string> {
   if (!text.trim()) throw new Error('No readable content found');
   return cleanText(text);
 }
+
+// ─── PRIMARY: FIRECRAWL SCRAPE ──────────────────────────────────────
+
+async function fetchReadable(url: string): Promise<string> {
+  // Try Firecrawl first
+  if (isFirecrawlConfigured()) {
+    const result = await firecrawlScrape(url);
+    if (result.ok && result.markdown) {
+      return cleanText(result.markdown);
+    }
+    console.warn(`Firecrawl scrape failed for ${url}, falling back to Jina:`, result.error);
+  }
+
+  // Fallback to Jina Reader
+  return fetchWithJina(url);
+}
+
+// ─── PUBLIC API ─────────────────────────────────────────────────────
 
 export async function scrapeContextSources(params: {
   websiteUrl?: string;
