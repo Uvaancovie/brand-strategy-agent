@@ -298,7 +298,7 @@ async function handleUserInput(text: string): Promise<void> {
     removeTyping();
     console.error('AI API error:', err);
     const error = err as Error;
-    let errContent = `Ã¢Å¡Â Ã¯Â¸Â **AI Error**\n\n`;
+    let errContent = `⚠️ **AI Error**\n\n`;
     if (error.message?.includes('API_KEY') || error.message?.includes('Missing Gemini API key')) {
       errContent += `The API key is invalid or missing. Check your \`.env\` file.`;
     } else if (error.message?.includes('503') || error.message?.includes('UNAVAILABLE') || error.message?.includes('high demand')) {
@@ -982,6 +982,16 @@ function submitTranscription() {
   handleUserInput(finalText + instruction);
 }
 
+modalSave.addEventListener('click', submitTranscription);
+modalSkip.addEventListener('click', () => {
+  transcriptName.value = '';
+  transcriptDesc.value = '';
+  submitTranscription();
+});
+modalClose.addEventListener('click', () => {
+  transcriptionModal.classList.add('hidden');
+});
+
 // ─── AUDIO: MIC RECORDING ───────────────────────────────────────────
 
 const MAX_RECORDING_SECONDS = 5 * 60; // 5 minutes
@@ -1389,16 +1399,16 @@ if (hadSession && hasExistingData()) {
   `;
 
   const quickActions = [
-    nextLabel ? `Ã°Å¸â€œÂ Continue ${nextLabel} section` : 'Ã°Å¸â€œâ€ž Export B.I.G Doc',
-    'Ã°Å¸â€œÂ Guided Interview (restart)',
-    'Ã°Å¸â€™Â¬ Free chat',
-    'Ã°Å¸Å½â„¢Ã¯Â¸Â Record audio',
+    nextLabel ? `📝 Continue ${nextLabel} section` : '📄 Export B.I.G Doc',
+    '📝 Guided Interview (restart)',
+    '💬 Free chat',
+    '🎙️ Record audio',
   ];
 
   setTimeout(() => {
     addSystemMessage({
       role: 'agent',
-      content: `Welcome back! Ã°Å¸â€˜â€¹ Your B.I.G Doc session has been restored Ã¢â‚¬â€ **${filled}/${totalFields}** fields filled (${pct}%).\n\nYou can continue, start the guided interview, or chat freely.`,
+      content: `Welcome back! 👋 Your B.I.G Doc session has been restored — **${filled}/${totalFields}** fields filled (${pct}%).\n\nYou can continue, start the guided interview, or chat freely.`,
       quickActions,
     });
   }, 400);
@@ -1417,8 +1427,8 @@ document.addEventListener('click', (e) => {
     startInterviewFlow(0);
     return;
   }
-  if (lower.startsWith('Ã°Å¸â€œÂ continue ') && lower.includes('section')) {
-    const sectionName = action.replace('Ã°Å¸â€œÂ Continue ', '').replace(' section', '').trim();
+  if (lower.startsWith('📝 continue ') && lower.includes('section')) {
+    const sectionName = action.replace('📝 Continue ', '').replace(' section', '').trim();
     const idx = FRAMEWORK.findIndex(s => s.label.toLowerCase() === sectionName.toLowerCase());
     if (idx >= 0) {
       startInterviewFlow(idx);
@@ -1430,7 +1440,7 @@ document.addEventListener('click', (e) => {
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ PROFILE PAGE Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 const ACTIVITY_ICONS: Record<string, string> = {
-  prompt: 'Ã°Å¸â€™Â¬', transcription: 'Ã°Å¸Å½â„¢Ã¯Â¸Â', file_upload: 'Ã°Å¸â€œÂ', pdf_upload: 'Ã°Å¸â€œâ€ž', login: 'Ã°Å¸â€â€˜'
+  prompt: '💬', transcription: '🎙️', file_upload: '📁', pdf_upload: '📄', login: '🔑'
 };
 const ACTIVITY_LABELS: Record<string, string> = {
   prompt: 'Prompt sent', transcription: 'Audio transcribed', file_upload: 'Audio file uploaded',

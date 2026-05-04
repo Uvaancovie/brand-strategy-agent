@@ -164,8 +164,8 @@ export async function startRecording(
           const recentChunks = audioState.audioChunks.slice(-6);
           const audioBlob = new Blob(recentChunks, { type: mimeStr });
           const file = new File([audioBlob], `live.${extStr}`, { type: mimeStr });
-          // Use translations endpoint which auto-detects any language (e.g. Spanish) and returns English live out of the box.
-          const transcription = await groq.audio.translations.create({
+          // Use transcriptions endpoint
+          const transcription = await groq.audio.transcriptions.create({
             file, model: 'whisper-large-v3', temperature: 0, response_format: 'json',
           });
           if (transcription.text && transcription.text.trim().length > 3) {
@@ -352,9 +352,8 @@ export async function processAudioFile(
             for (let c = 0; c < numChannelsOrig; c++) {
                sum += audioBuffer.getChannelData(c)[offset + j];
             }
-            monoData[j] = sum / numChannelsOrig;
-         }
-        }
+             monoData[j] = sum / numChannelsOrig;
+          }
 
         const wavBlob = audioBufferToWavBlob(chunkBuffer);
         const chunkFile = new File([wavBlob], `chunk_${i}.wav`, { type: 'audio/wav' });

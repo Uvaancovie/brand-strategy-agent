@@ -11,7 +11,7 @@ import { generateOllamaJson, type OllamaChatMessage } from './ollama.service';
 
 const API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 export const groq = new Groq({ 
-  apiKey: API_KEY, 
+  apiKey: API_KEY || 'missing_key_error_handled_later', 
   dangerouslyAllowBrowser: true,
   timeout: 5 * 60 * 1000, // 5 minute timeout per request
   maxRetries: 2
@@ -103,44 +103,26 @@ export async function callGroq(userText: string, retries = 2, referenceContext =
     })
     .join('\n\n');
 
-  async function generateWithGeminiJson(prompt: string): Promise<string> {
-    if (!gemini) {
-      throw new Error('Missing Gemini API key. Set VITE_GOOGLE_API_KEY or VITE_GEMINI_API_KEY.');
+  async function generateWithGroqJson(): Promise<string> {
+    if (!API_KEY || API_KEY === 'missing_key_error_handled_later') {
+      throw new Error('API_KEY is missing');
     }
 
-    let lastError: unknown = null;
-
-    for (const model of GOOGLE_MODELS) {
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          const response = await gemini.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              temperature: 0.2,
-              maxOutputTokens: 2048,
-              responseMimeType: 'application/json',
-            },
-          });
-
-          return response.text || '{}';
-        } catch (err) {
-          lastError = err;
-          const message = String((err as Error)?.message || err);
-          if (!isGeminiQuotaError(err) || attempt >= retries) break;
-
-          const backoff = 1000 * Math.pow(2, attempt);
-          console.warn(`Gemini ${model} retry ${attempt + 1}/${retries + 1} after ${backoff}ms:`, message);
-          await delay(backoff);
-        }
-      }
+    try {
+      const response = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: ollamaMessages,
+        temperature: 0.2,
+        response_format: { type: 'json_object' }
+      });
+      return response.choices[0]?.message?.content || '{}';
+    } catch (err) {
+      throw err;
     }
-
-    throw lastError instanceof Error ? lastError : new Error('Gemini request failed.');
   }
 
   try {
-    const raw = await generateWithGeminiJson(promptText);
+    const raw = await generateWithGroqJson();
     return parseAgentResponse(raw);
 
   } catch (err: unknown) {
@@ -208,13 +190,13 @@ function parseAgentResponse(raw: string): AgentResponse {
 // ─── AUDIO TRANSCRIPTION ────────────────────────────────────────────
 
 export async function transcribeAudio(file: File): Promise<string> {
-  const translation = await groq.audio.translations.create({
+  const transcription = await groq.audio.transcriptions.create({
     file,
     model: 'whisper-large-v3',
     temperature: 0,
     response_format: 'json',
   });
-  return (translation.text || '').trim();
+  return (transcription.text || '').trim();
 }
 
 // ─── PROMPT GUARD ───────────────────────────────────────────────────
