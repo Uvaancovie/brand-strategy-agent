@@ -1,13 +1,15 @@
-// ─── MARKET INTELLIGENCE SERVICE ────────────────────────────────────
+// ─── MARKET INTELLIGENCE SERVICE (MARK AGENT) ────────────────────────
 // Generates structured, quantitative market intelligence via:
 // 1. Firecrawl /search for REAL country-specific market data
 // 2. Gemini AI to synthesize and structure the research
 // Includes hard numbers, benchmarks & KPIs.
+// AMA Framework: Data → Analysis → Action
 
 import { GoogleGenAI } from '@google/genai';
 import {
   searchMarketResearch,
   buildResearchBrief,
+  extractAllMetrics,
   isFirecrawlConfigured,
   type FirecrawlMarketResult,
   type MarketResearchParams,
@@ -65,17 +67,22 @@ export interface MarketData {
     target_12m: string;
     frequency: string;
   }[];
-  // New: track data sources
+  // Track data sources
   dataSources?: { url: string; title: string }[];
+  // Raw extracted metrics from web sources
+  extractedMetrics?: BoxMetric[];
 }
 
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+// ─── GEMINI INITIALIZATION ──────────────────────────────────────────
+
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
 const GOOGLE_MODELS = (import.meta.env.VITE_GOOGLE_MODELS || import.meta.env.VITE_GOOGLE_MODEL || 'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash')
   .split(',')
-  .map(model => model.trim())
+  .map((model: string) => model.trim())
   .filter(Boolean);
 const gemini = GOOGLE_API_KEY ? new GoogleGenAI({ apiKey: GOOGLE_API_KEY }) : null;
+
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const OLLAMA_RETRIES = 1;
 
 function isGeminiQuotaError(err: unknown): boolean {
@@ -90,14 +97,53 @@ function isGeminiQuotaError(err: unknown): boolean {
   );
 }
 
+// ─── LOCAL CURRENCY MAP ─────────────────────────────────────────────
+
+const CURRENCY_MAP: Record<string, string> = {
+  'United States': 'USD',
+  'Australia': 'AUD',
+  'Canada': 'CAD',
+  'France': 'EUR',
+  'Germany': 'EUR',
+  'Ghana': 'GHS',
+  'India': 'INR',
+  'Indonesia': 'IDR',
+  'Ireland': 'EUR',
+  'Italy': 'EUR',
+  'Kenya': 'KES',
+  'Malaysia': 'MYR',
+  'Netherlands': 'EUR',
+  'New Zealand': 'NZD',
+  'Nigeria': 'NGN',
+  'Philippines': 'PHP',
+  'Portugal': 'EUR',
+  'Saudi Arabia': 'SAR',
+  'Singapore': 'SGD',
+  'South Africa': 'ZAR',
+  'Spain': 'EUR',
+  'Sweden': 'SEK',
+  'Switzerland': 'CHF',
+  'United Arab Emirates': 'AED',
+  'United Kingdom': 'GBP',
+  'Zimbabwe': 'ZWL',
+};
+
+function getCurrency(country: string): string {
+  return CURRENCY_MAP[country] || 'USD';
+}
+
+// ─── FALLBACK MARKET DATA ───────────────────────────────────────────
+
 function buildFallbackMarketData(country: string, industry: string): MarketData {
+  const currency = getCurrency(country);
   return {
     executiveSummary: `Market intelligence could not be generated live due to an AI quota limit. This fallback report provides a conservative, strategy-first overview for a ${industry} business in ${country}.`,
     industryOverview: {
       narrative: `Live AI synthesis was unavailable, so this section uses a fallback narrative for the ${industry} market in ${country}. Replace with refreshed market research when quota access returns.`,
       metrics: [
-        { label: 'REPORT STATUS', value: 'Fallback' },
+        { label: 'REPORT STATUS', value: 'Fallback — AI Quota Exhausted' },
         { label: 'MARKET FOCUS', value: `${industry} in ${country}` },
+        { label: 'CURRENCY', value: currency },
       ],
     },
     marketSizing: {
@@ -120,7 +166,7 @@ function buildFallbackMarketData(country: string, industry: string): MarketData 
         demographics: 'N/A',
         psychographics: 'N/A',
       },
-      metrics: [],
+      metrics: [{ label: 'Currency', value: currency }],
     },
     competitivePositioning: {
       competitors: [],
@@ -152,122 +198,205 @@ function buildFallbackMarketData(country: string, industry: string): MarketData 
         frequency: 'Each run',
       },
     ],
+    extractedMetrics: [],
   };
 }
 
-// ─── PROMPT ─────────────────────────────────────────────────────────
+// ─── PROMPT BUILDER ─────────────────────────────────────────────────
 
-function buildMarketPrompt(brandContext: string, researchBrief: string, country: string, industry: string): string {
+function buildMarketPrompt(
+  brandContext: string,
+  researchBrief: string,
+  country: string,
+  industry: string,
+  profession: string,
+  services: string | undefined
+): string {
+  const currency = getCurrency(country);
   const realDataSection = researchBrief
-    ? `\n\nREAL MARKET RESEARCH DATA (scraped from live web sources specific to ${country}):\n${researchBrief}\n\nCRITICAL: Use the above REAL research data to ground your analysis. Reference specific numbers, statistics, and trends from these sources. Do NOT fabricate data when real data is available above.`
+    ? `\n\n## REAL MARKET RESEARCH DATA (scraped from live web sources specific to ${country}):\n${researchBrief}\n\nCRITICAL: Use the above REAL research data to ground your analysis. Reference specific numbers, statistics, and trends from these sources. Do NOT fabricate data when real data is available above. When citing a data point, note which source number it came from (e.g., "According to Source 3...").`
     : '';
 
-  return `You are a senior brand strategist and market research analyst preparing a premium Brand Identity Guiding Document (B.I.G Doc) for a client based in ${country}, operating in the ${industry} industry. Based on the brand context and real market research data below, generate a comprehensive, data-rich market intelligence report.
+  // Currency-specific formatting instruction
+  const currencyFormat = currency === 'USD' ? 'in US Dollars (USD)'
+    : currency === 'EUR' ? 'in Euros (EUR)'
+    : currency === 'GBP' ? 'in British Pounds (GBP)'
+    : `in local currency ${currency}`;
+
+  return `You are Mark — Volcanic Marketing's autonomous Market Research Agent. You specialize in quantitative market intelligence for brand strategy development.
+
+COUNTRY: ${country}
+INDUSTRY: ${industry}
+PROFESSION: ${profession}
+SERVICES: ${services || 'Not specified'}
+CURRENCY: ${currency}
+
+Following the AMA (American Marketing Association) 7-step market analysis framework, generate a comprehensive market intelligence report:
+
+1. DEFINE PURPOSE: Why is this analysis being conducted? (New market entry, benchmarking, positioning)
+2. INDUSTRY STATE: Current market conditions, trends, external factors (PEST)
+3. TARGET CUSTOMER: Demographics, psychographics, purchasing patterns
+4. COMPETITIVE LANDSCAPE: Market share, positioning, SWOT of key players
+5. MARKET TRENDS: Technology, social, economic drivers
+6. FORECASTING: TAM/SAM/SOM modeling, growth projections
+7. BARRIERS TO ENTRY: Regulatory, economic, competitive barriers
 
 CRITICAL REQUIREMENTS:
-1. Include SPECIFIC QUANTITATIVE DATA — percentages, dollar figures, growth rates, market sizes, demographic breakdowns, and benchmarking scores. Use the real research data provided when available.
-2. All data MUST be specific to ${country} and the ${industry} industry. Use local currency, local market conditions, and locally relevant competitors.
+1. Include SPECIFIC QUANTITATIVE DATA — percentages, dollar figures (${currencyFormat}), growth rates (CAGR %), market sizes, demographic breakdowns, salary benchmarks, CAC, CLV, and benchmarking scores.
+2. All data MUST be specific to ${country} and the ${industry} industry. Use local currency (${currency}), local market conditions, and locally relevant competitors.
 3. Use professional consulting language (McKinsey/Bain style).
 4. Do NOT use markdown in your text fields. Do not use asterisks or headers inside string values.
 5. You MUST return EXACTLY ONE JSON Object matching the strict schema below.
-6. When citing real data from the research brief, be specific about the numbers and their context.
+6. When citing real data from the research brief, reference the source (e.g., [Source 1], [Source 3]).
+7. For any field where you lack sufficient data, use "N/A" and state why (e.g., "N/A — no reliable source found for this market").
+8. Ensure the following metrics are addressed with data where available:
+   - Market size (TAM/SAM/SOM) with ${currency} values
+   - Growth rate / CAGR as percentage
+   - Competitor market share percentages
+   - Salary/compensation benchmarks in ${currency}
+   - Customer Acquisition Cost (CAC) estimates in ${currency}
+   - Customer Lifetime Value (CLV) estimates in ${currency}
+   - Industry KPIs (conversion rates, retention/churn rates)
+   - Regulatory compliance cost estimates
 
 BRAND CONTEXT:
-${brandContext || 'No specific brand context was collected. Generate market intelligence for a business in ' + industry + ' in ' + country + '.'}
+${brandContext || 'No specific brand context was collected. Generate market intelligence for a business in ' + industry + ' in ' + country + ', operated by a ' + profession + '.'}
 ${realDataSection}
 
 SCHEMA PROMPT:
 Respond ONLY with perfectly valid JSON matching this exact structure layout. Do not include any text before or after the JSON.
 
 {
-  "executiveSummary": "150-word executive summary combining qualitative position with 2-3 key quantitative stats specific to ${country}.",
+  "executiveSummary": "150-word executive summary combining qualitative position with 3 key quantitative stats specific to ${country} in ${currency}.",
   "industryOverview": {
-    "narrative": "Detailed ${industry} industry landscape analysis for ${country}...",
+    "narrative": "Detailed ${industry} industry landscape analysis for ${country}, covering current state, trends, external factors (PEST), and outlook. Reference specific sources where data was drawn.",
     "metrics": [
-      { "label": "EST. TOTAL VALUE", "value": "$5B" },
-      { "label": "5-YEAR CAGR", "value": "12.5%" },
-      { "label": "PRIMARY DRIVER", "value": "AI Adoption" },
-      { "label": "REGULATORY RISK", "value": "Medium" }
+      { "label": "EST. TOTAL MARKET VALUE", "value": "${currency} X.XB" },
+      { "label": "5-YEAR CAGR", "value": "X.X%" },
+      { "label": "PRIMARY GROWTH DRIVER", "value": "e.g., Digital Adoption" },
+      { "label": "SECONDARY DRIVER", "value": "e.g., Regulatory Change" },
+      { "label": "REGULATORY RISK LEVEL", "value": "Low / Medium / High" },
+      { "label": "KEY TREND", "value": "e.g., AI Integration Accelerating" }
     ]
   },
   "marketSizing": {
-    "tam": { "value": "$10B+", "description": "Total Addressable Market in ${country}..." },
-    "sam": { "value": "$1B+", "description": "Serviceable Addressable Market..." },
-    "som": { "value": "$50M", "description": "Serviceable Obtainable Market..." },
-    "growth_cagr": "15%",
-    "narrative": "Detailed market sizing narrative specific to ${country}..."
+    "tam": { "value": "${currency} X.XB+", "description": "Total Addressable Market in ${country} — the total revenue opportunity if 100% market share were achieved." },
+    "sam": { "value": "${currency} X.XB+", "description": "Serviceable Addressable Market in ${country} — the segment of TAM your services/products can realistically reach." },
+    "som": { "value": "${currency} XXXM+", "description": "Serviceable Obtainable Market in ${country} — the share of SAM you can capture in 3-5 years." },
+    "growth_cagr": "X.X%",
+    "narrative": "Detailed market sizing narrative specific to ${country}, explaining methodology and assumptions behind TAM/SAM/SOM figures."
   },
   "targetMarketSegmentation": {
-    "primary": { "name": "Early Adopters", "description": "Core target in ${country}...", "demographics": "25-45, income data in local currency", "psychographics": "Tech-forward, values speed over price" },
-    "secondary": { "name": "Value Seekers", "description": "Secondary segment...", "demographics": "35-55, income data in local currency", "psychographics": "Practical, needs social proof" },
+    "primary": {
+      "name": "Primary Buyer Persona Name",
+      "description": "Core target customer in ${country} for a ${industry} business.",
+      "demographics": "Age range, income bracket in ${currency}/year, education, location, job title",
+      "psychographics": "Values, motivations, decision drivers, pain points, buying behavior"
+    },
+    "secondary": {
+      "name": "Secondary Buyer Persona Name",
+      "description": "Adjacent or emerging customer segment in ${country}.",
+      "demographics": "Age range, income bracket in ${currency}/year, education, location, job title",
+      "psychographics": "Values, motivations, decision drivers, buying behavior"
+    },
     "metrics": [
-      { "label": "EST. CLV", "value": "local currency value" },
-      { "label": "TARGET CAC", "value": "local currency value" },
-      { "label": "RETENTION GOAL", "value": "85%" }
+      { "label": "EST. CLV (${currency})", "value": "${currency} X,XXX" },
+      { "label": "EST. TARGET CAC (${currency})", "value": "${currency} XXX" },
+      { "label": "CUSTOMER RETENTION GOAL", "value": "85-95%" },
+      { "label": "AVG. CONVERSION RATE", "value": "X.X%" },
+      { "label": "EST. ANNUAL SPEND PER CUSTOMER (${currency})", "value": "${currency} X,XXX" }
     ]
   },
   "competitivePositioning": {
     "competitors": [
-      { "archetype": "The Legacy Giant", "market_share": "45%", "price_tier": "Premium", "strength": "Brand Trust", "weakness": "Slow Innovation" },
-      { "archetype": "The Scrappy Startup", "market_share": "5%", "price_tier": "Budget", "strength": "Agility", "weakness": "Limited Capital" },
-      { "archetype": "The Niche Specialist", "market_share": "15%", "price_tier": "Luxury", "strength": "Deep Expertise", "weakness": "Narrow Focus" }
+      {
+        "archetype": "The Legacy Giant",
+        "market_share": "X%",
+        "price_tier": "Premium / Mid / Budget",
+        "strength": "e.g., Brand Trust, Scale",
+        "weakness": "e.g., Slow Innovation, Bureaucracy"
+      },
+      {
+        "archetype": "The Disruptive Challenger",
+        "market_share": "X%",
+        "price_tier": "Budget / Value",
+        "strength": "e.g., Agility, Tech-First",
+        "weakness": "e.g., Limited Capital, Small Brand"
+      },
+      {
+        "archetype": "The Niche Specialist",
+        "market_share": "X%",
+        "price_tier": "Premium / Luxury",
+        "strength": "e.g., Deep Expertise, Loyalty",
+        "weakness": "e.g., Narrow Focus, Limited Scale"
+      }
     ],
-    "narrative": "Competitive positioning in ${country} ${industry} market..."
+    "narrative": "Competitive positioning analysis in ${country} ${industry} market, including market share dynamics, pricing strategies, and competitive gaps."
   },
   "swotAnalysis": {
     "strengths": [
-      { "factor": "Proprietary Tech", "impact": "High barrier to entry" },
-      { "factor": "Agile Team", "impact": "Faster iterations" }
+      { "factor": "e.g., Proprietary Technology", "impact": "e.g., High barrier to entry, reduces competition" },
+      { "factor": "e.g., Agile Team Structure", "impact": "e.g., Faster iteration cycles than competitors" }
     ],
     "weaknesses": [
-      { "factor": "Limited Brand Awareness", "impact": "High CAC initially" }
+      { "factor": "e.g., Limited Brand Awareness", "impact": "e.g., Higher initial Customer Acquisition Cost" },
+      { "factor": "e.g., Small Market Share", "impact": "e.g., Limited pricing power vs. incumbents" }
     ],
     "opportunities": [
-      { "factor": "New Market Segments", "impact": "Untapped revenue" }
+      { "factor": "e.g., Untapped Market Segments", "impact": "e.g., Estimated ${currency} XXXM in underserved demand" },
+      { "factor": "e.g., Regulatory Tailwinds", "impact": "e.g., New policy opens ${currency} XXB market opportunity" }
     ],
     "threats": [
-      { "factor": "Economic Downturn", "impact": "Budget constraints" }
+      { "factor": "e.g., Economic Downturn Risk", "impact": "e.g., Budget constraints reduce B2B purchasing" },
+      { "factor": "e.g., Increased Competition from Big Tech", "impact": "e.g., Market consolidation squeezes margins" }
     ]
   },
   "strategicRecommendations": [
-    { 
-      "title": "Establish Thought Leadership", 
-      "timeline": "Q1-Q2", 
-      "investment": "local currency estimate", 
-      "roi": "Medium-Term Brand Equity", 
-      "priority": "High", 
-      "steps": ["Publish whitepaper", "Speak at 2 major conferences", "Launch podcast"] 
+    {
+      "title": "Establish Thought Leadership & Brand Authority",
+      "timeline": "Q1-Q2",
+      "investment": "${currency} XXX,XXX",
+      "roi": "Medium-Term Brand Equity & Lead Generation",
+      "priority": "High",
+      "steps": ["Publish 2-3 industry whitepapers with original data", "Speak at 2-3 major ${industry} conferences in ${country}", "Launch a bi-weekly expert content series (podcast/blog)"]
+    },
+    {
+      "title": "Optimize Customer Acquisition Funnel",
+      "timeline": "Q1-Q3",
+      "investment": "${currency} XX,XXX",
+      "roi": "Measurable CAC reduction within 6 months",
+      "priority": "High",
+      "steps": ["Implement A/B testing on landing pages and CTAs", "Launch targeted LinkedIn/Google campaigns for ${country} market", "Build referral program leveraging existing satisfied clients"]
+    },
+    {
+      "title": "Strengthen Competitive Moat Through Differentiation",
+      "timeline": "Q2-Q4",
+      "investment": "${currency} X,XXXXX",
+      "roi": "Long-term market share growth",
+      "priority": "Medium",
+      "steps": ["Develop proprietary tool/feature competitors lack", "Secure strategic partnerships with ${industry} leaders in ${country}", "Invest in customer success to improve retention above ${currency} X,XXX CLV"]
+    },
+    {
+      "title": "Monitor Regulatory Landscape & Compliance",
+      "timeline": "Ongoing",
+      "investment": "${currency} X,XXX annually",
+      "roi": "Risk mitigation and operational continuity",
+      "priority": "Medium",
+      "steps": ["Assign compliance officer for ${country} regulatory requirements", "Conduct quarterly compliance audits", "Subscribe to regulatory update service for ${industry}"]
     }
   ],
   "kpiFramework": [
-    { "category": "Growth", "metric": "MRR", "baseline": "local currency 0", "target_6m": "local currency value", "target_12m": "local currency value", "frequency": "Monthly" },
-    { "category": "Brand", "metric": "Website Visitors", "baseline": "0", "target_6m": "10k/mo", "target_12m": "50k/mo", "frequency": "Weekly" }
+    { "category": "Growth", "metric": "Monthly Revenue Growth", "baseline": "${currency} 0", "target_6m": "${currency} XX,XXX/mo", "target_12m": "${currency} XXX,XXX/mo", "frequency": "Monthly" },
+    { "category": "Growth", "metric": "MRR / ARR", "baseline": "${currency} 0", "target_6m": "${currency} XXX,XXX", "target_12m": "${currency} X,XXX,XXX", "frequency": "Monthly" },
+    { "category": "Acquisition", "metric": "Customer Acquisition Cost (CAC)", "baseline": "TBD from market data", "target_6m": "${currency} XXX", "target_12m": "${currency} XX0", "frequency": "Monthly" },
+    { "category": "Acquisition", "metric": "Conversion Rate", "baseline": "X.X%", "target_6m": "X.X%", "target_12m": "X.X%", "frequency": "Weekly" },
+    { "category": "Retention", "metric": "Customer Retention / Churn Rate", "baseline": "XX%", "target_6m": "XX% retained", "target_12m": "XX% retained", "frequency": "Monthly" },
+    { "category": "Revenue", "metric": "Customer Lifetime Value (CLV)", "baseline": "${currency} 0", "target_6m": "${currency} X,XXX", "target_12m": "${currency} XX,XXX", "frequency": "Quarterly" },
+    { "category": "Brand", "metric": "Website Visitors / Organic Traffic", "baseline": "0", "target_6m": "X0k/mo", "target_12m": "XXXk/mo", "frequency": "Weekly" },
+    { "category": "Brand", "metric": "Brand Awareness (aided recall)", "baseline": "X%", "target_6m": "XX%", "target_12m": "XXX%", "frequency": "Quarterly" }
   ]
 }`;
 }
-
-// ─── PUBLIC API ──────────────────────────────────────────────────────
-
-const FALLBACK_MARKET_DATA: MarketData = {
-  executiveSummary: "Data generation encountered an issue. Please try regenerating the PDF.",
-  industryOverview: { narrative: "N/A", metrics: [] },
-  marketSizing: {
-    tam: { value: "N/A", description: "N/A" },
-    sam: { value: "N/A", description: "N/A" },
-    som: { value: "N/A", description: "N/A" },
-    growth_cagr: "N/A",
-    narrative: "N/A"
-  },
-  targetMarketSegmentation: {
-    primary: { name: "N/A", description: "N/A", demographics: "N/A", psychographics: "N/A" },
-    secondary: { name: "N/A", description: "N/A", demographics: "N/A", psychographics: "N/A" },
-    metrics: []
-  },
-  competitivePositioning: { competitors: [], narrative: "N/A" },
-  swotAnalysis: { strengths: [], weaknesses: [], opportunities: [], threats: [] },
-  strategicRecommendations: [],
-  kpiFramework: []
-};
 
 export interface GenerateMarketDataParams {
   brandContext: string;
@@ -283,159 +412,128 @@ export interface GenerateMarketDataResult {
   firecrawlResults: FirecrawlMarketResult[];
 }
 
-export async function generateMarketData(
-  params: GenerateMarketDataParams,
-  retries = 2
-): Promise<GenerateMarketDataResult> {
-  const { brandContext, country, industry, profession, services, onProgress } = params;
-  let firecrawlResults: FirecrawlMarketResult[] = [];
-  let researchBrief = '';
+function cleanJson(raw: string): string {
+  const trimmed = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  return first >= 0 && last > first ? trimmed.slice(first, last + 1) : trimmed;
+}
 
-  // Step 1: Firecrawl search for real market data
-  if (isFirecrawlConfigured()) {
-    onProgress?.('Searching real market data...', 10);
-    try {
-      const searchParams: MarketResearchParams = {
-        country,
-        industry,
-        profession,
-        services,
-      };
-      firecrawlResults = await searchMarketResearch(searchParams, (step, pct) => {
-        onProgress?.(step, Math.round(10 + pct * 0.4)); // 10-50%
-      });
-      researchBrief = buildResearchBrief(firecrawlResults);
-      
-      // TRUNCATION: Keep the prompt within token limits (approx 6000 TPM on free tier)
-      // 8000 characters is roughly 2000 tokens, leaving room for output and other instructions.
-      if (researchBrief.length > 8000) {
-        researchBrief = researchBrief.substring(0, 8000) + '\\n...[TRUNCATED to fit limits]';
-      }
-
-      const totalSources = firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0);
-      onProgress?.(`Found ${totalSources} sources. Analyzing with AI...`, 55);
-    } catch (err) {
-      console.warn('Firecrawl search failed, proceeding with AI-only:', err);
-      onProgress?.('Search unavailable. Using AI analysis...', 50);
-    }
-  } else {
-    onProgress?.('Generating market intelligence with AI...', 30);
-  }
-
-  // Step 2: Groq AI to synthesize
-  const prompt = buildMarketPrompt(brandContext, researchBrief, country, industry);
-  let raw = '';
-  const ollamaMessages: OllamaChatMessage[] = [
-    {
-      role: 'system',
-      content: `You are a world-class brand strategy consultant specializing in ${country} markets. You always respond with perfectly formatted JSON matching the requested schema exactly. Never output conversational text. All monetary values should use the local currency of ${country}.`,
+function normalizeMarketData(parsed: Partial<MarketData>, fallback: MarketData): MarketData {
+  return {
+    executiveSummary: parsed.executiveSummary || fallback.executiveSummary,
+    industryOverview: {
+      narrative: parsed.industryOverview?.narrative || fallback.industryOverview.narrative,
+      metrics: Array.isArray(parsed.industryOverview?.metrics) ? parsed.industryOverview!.metrics : fallback.industryOverview.metrics,
     },
-    { role: 'user', content: prompt },
-  ];
+    marketSizing: {
+      tam: parsed.marketSizing?.tam || fallback.marketSizing.tam,
+      sam: parsed.marketSizing?.sam || fallback.marketSizing.sam,
+      som: parsed.marketSizing?.som || fallback.marketSizing.som,
+      growth_cagr: parsed.marketSizing?.growth_cagr || fallback.marketSizing.growth_cagr,
+      narrative: parsed.marketSizing?.narrative || fallback.marketSizing.narrative,
+    },
+    targetMarketSegmentation: {
+      primary: parsed.targetMarketSegmentation?.primary || fallback.targetMarketSegmentation.primary,
+      secondary: parsed.targetMarketSegmentation?.secondary || fallback.targetMarketSegmentation.secondary,
+      metrics: Array.isArray(parsed.targetMarketSegmentation?.metrics) ? parsed.targetMarketSegmentation!.metrics : fallback.targetMarketSegmentation.metrics,
+    },
+    competitivePositioning: {
+      competitors: Array.isArray(parsed.competitivePositioning?.competitors) ? parsed.competitivePositioning!.competitors : fallback.competitivePositioning.competitors,
+      narrative: parsed.competitivePositioning?.narrative || fallback.competitivePositioning.narrative,
+    },
+    swotAnalysis: {
+      strengths: Array.isArray(parsed.swotAnalysis?.strengths) ? parsed.swotAnalysis!.strengths : fallback.swotAnalysis.strengths,
+      weaknesses: Array.isArray(parsed.swotAnalysis?.weaknesses) ? parsed.swotAnalysis!.weaknesses : fallback.swotAnalysis.weaknesses,
+      opportunities: Array.isArray(parsed.swotAnalysis?.opportunities) ? parsed.swotAnalysis!.opportunities : fallback.swotAnalysis.opportunities,
+      threats: Array.isArray(parsed.swotAnalysis?.threats) ? parsed.swotAnalysis!.threats : fallback.swotAnalysis.threats,
+    },
+    strategicRecommendations: Array.isArray(parsed.strategicRecommendations) ? parsed.strategicRecommendations : fallback.strategicRecommendations,
+    kpiFramework: Array.isArray(parsed.kpiFramework) ? parsed.kpiFramework : fallback.kpiFramework,
+    dataSources: parsed.dataSources || fallback.dataSources,
+    extractedMetrics: parsed.extractedMetrics || fallback.extractedMetrics,
+  };
+}
 
-  try {
-    onProgress?.('AI synthesizing market report...', 65);
-
-    if (!gemini) {
-      throw new Error('Missing Gemini API key. Set VITE_GOOGLE_API_KEY or VITE_GEMINI_API_KEY.');
-    }
-
-    const synthesisPrompt = `You are a world-class brand strategy consultant specializing in ${country} markets. You always respond with perfectly formatted JSON matching the requested schema exactly. Never output conversational text. All monetary values should use the local currency of ${country}.\n\n${prompt}`;
-
-    let lastError: unknown = null;
-    let success = false;
-
-    for (const model of GOOGLE_MODELS) {
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          const response = await gemini.models.generateContent({
-            model,
-            contents: synthesisPrompt,
-            config: {
-              responseMimeType: 'application/json',
-              maxOutputTokens: 4096,
-              temperature: 0.2,
-            },
-          });
-
-          raw = response.text || '{}';
-          success = true;
-          break;
-        } catch (err) {
-          lastError = err;
-          const message = String((err as Error)?.message || err);
-          const isRetryable = message.includes('503') || message.includes('UNAVAILABLE') || message.includes('429') || message.includes('rate_limit_exceeded');
-          if (!isRetryable || attempt >= retries) break;
-
-          const backoff = 1000 * Math.pow(2, attempt);
-          console.warn(`Market Gemini ${model} retry ${attempt + 1}/${retries + 1} after ${backoff}ms:`, message);
-          await delay(backoff);
-        }
-      }
-
-      if (success) break;
-    }
-
-    if (!success) {
-      try {
-        onProgress?.('Trying Ollama fallback for market analysis...', 75);
-        raw = await generateOllamaJson(ollamaMessages, OLLAMA_RETRIES);
-        success = true;
-      } catch (ollamaError) {
-        const fallback = buildFallbackMarketData(country, industry);
-        if (lastError) {
-          console.warn('Market AI unavailable, using fallback market data:', lastError);
-        }
-        console.warn('Ollama fallback failed for market analysis:', ollamaError);
-        onProgress?.('AI quota limit reached. Using fallback market analysis...', 90);
-        onProgress?.('Market data ready!', 100);
-        return { marketData: fallback, firecrawlResults };
-      }
-    }
-
-    onProgress?.('Finalizing market data...', 90);
-  } catch (err: unknown) {
-    const error = err as Error;
-    if (retries > 0 && isGeminiQuotaError(error)) {
-      console.warn(`Market data: rate limit or quota hit. Retrying... (${retries} left)`);
-      await delay(2500);
-      return generateMarketData(params, retries - 1);
-    }
-
-    if (isGeminiQuotaError(error)) {
-      console.warn('Market data: quota exhausted, returning fallback market report.');
-      onProgress?.('AI quota limit reached. Using fallback market analysis...', 90);
-      onProgress?.('Market data ready!', 100);
-      return { marketData: buildFallbackMarketData(country, industry), firecrawlResults };
-    }
-    throw err;
+async function generateWithGemini(prompt: string): Promise<string> {
+  if (!gemini) {
+    throw new Error('Missing Gemini API key. Set VITE_GOOGLE_API_KEY or VITE_GEMINI_API_KEY.');
   }
 
+  let lastError: unknown = null;
+  for (const model of GOOGLE_MODELS) {
+    try {
+      const response = await gemini.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          temperature: 0.2,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json',
+        },
+      });
+      return response.text || '{}';
+    } catch (err) {
+      lastError = err;
+      if (!isGeminiQuotaError(err)) break;
+      await delay(1000);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Gemini market research request failed.');
+}
+
+export async function generateMarketData(params: GenerateMarketDataParams): Promise<GenerateMarketDataResult> {
+  const { brandContext, country, industry, profession, services, onProgress } = params;
+  const fallback = buildFallbackMarketData(country, industry);
+  let firecrawlResults: FirecrawlMarketResult[] = [];
+
+  onProgress?.('Mark is defining the market research scope...', 5);
+
+  if (isFirecrawlConfigured()) {
+    onProgress?.('Mark is searching country-specific market sources...', 15);
+    firecrawlResults = await searchMarketResearch({ country, industry, profession, services }, (step, pct) => {
+      onProgress?.(step, 15 + Math.round(pct * 0.35));
+    });
+  } else {
+    onProgress?.('Firecrawl is not configured; Mark will synthesize from the available brand context.', 30);
+  }
+
+  const researchBrief = buildResearchBrief(firecrawlResults);
+  const extracted = extractAllMetrics(firecrawlResults).slice(0, 12).map(m => ({
+    label: m.source,
+    value: m.value,
+  }));
+  const dataSources = firecrawlResults.flatMap(result =>
+    result.sources.map(source => ({ url: source.url, title: source.title }))
+  );
+
   try {
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleaned) as MarketData;
+    onProgress?.('Mark is synthesizing the stats dashboard and recommendations...', 62);
+    const prompt = buildMarketPrompt(brandContext, researchBrief, country, industry, profession, services);
+    let raw = '';
 
-    // Track data sources
-    const dataSources = firecrawlResults
-      .flatMap(r => r.sources.map(s => ({ url: s.url, title: s.title })))
-      .filter(s => s.url);
+    try {
+      raw = await generateWithGemini(prompt);
+    } catch (geminiError) {
+      const messages: OllamaChatMessage[] = [
+        { role: 'system', content: 'Return only valid JSON for a market intelligence report. No markdown.' },
+        { role: 'user', content: prompt },
+      ];
+      raw = await generateOllamaJson(messages, OLLAMA_RETRIES);
+    }
 
-    const marketData: MarketData = {
-      executiveSummary: parsed.executiveSummary || FALLBACK_MARKET_DATA.executiveSummary,
-      industryOverview: parsed.industryOverview || FALLBACK_MARKET_DATA.industryOverview,
-      marketSizing: parsed.marketSizing || FALLBACK_MARKET_DATA.marketSizing,
-      targetMarketSegmentation: parsed.targetMarketSegmentation || FALLBACK_MARKET_DATA.targetMarketSegmentation,
-      competitivePositioning: parsed.competitivePositioning || FALLBACK_MARKET_DATA.competitivePositioning,
-      swotAnalysis: parsed.swotAnalysis || FALLBACK_MARKET_DATA.swotAnalysis,
-      strategicRecommendations: parsed.strategicRecommendations || FALLBACK_MARKET_DATA.strategicRecommendations,
-      kpiFramework: parsed.kpiFramework || FALLBACK_MARKET_DATA.kpiFramework,
-      dataSources,
-    };
-
-    onProgress?.('Market data ready!', 100);
+    const parsed = JSON.parse(cleanJson(raw)) as Partial<MarketData>;
+    const marketData = normalizeMarketData(parsed, fallback);
+    marketData.dataSources = dataSources;
+    marketData.extractedMetrics = extracted.length ? extracted : marketData.extractedMetrics;
+    onProgress?.('Mark has completed the market dashboard.', 100);
     return { marketData, firecrawlResults };
   } catch (err) {
-    console.error('Market data parse error:', err, 'Raw:', raw);
-    return { marketData: FALLBACK_MARKET_DATA, firecrawlResults };
+    console.warn('Market data synthesis failed; using fallback market data.', err);
+    fallback.dataSources = dataSources;
+    fallback.extractedMetrics = extracted;
+    onProgress?.('Mark created a fallback strategy dashboard.', 100);
+    return { marketData: fallback, firecrawlResults };
   }
 }

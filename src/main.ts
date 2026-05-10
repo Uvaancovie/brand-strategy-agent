@@ -38,9 +38,10 @@ import { renderBrandscript } from './components/BrandscriptPanel';
 import { renderNav } from './components/SidebarNav';
 import { renderInterviewCard } from './components/InterviewCard';
 import type { SectionId } from './config/framework';
+import { renderScriptManager, setScriptManagerCallbacks } from './components/ScriptManager';
+import { renderMarkPanel } from './components/MarkPanel';
 import { exportBigDoc } from './services/export.service';
 import { createTranscript, syncTranscriptToSupabase, loadTranscriptsFromSupabase, getRecordingSessionCount, incrementRecordingSession, MAX_RECORDING_SESSIONS } from './services/transcription.service';
-import { renderScriptManager, setScriptManagerCallbacks } from './components/ScriptManager';
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ DOM REFERENCES Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
@@ -89,9 +90,12 @@ const ctxLoading = document.getElementById('ctx-loading') as HTMLDivElement;
 const ctxLoadingTitle = document.getElementById('ctx-loading-title') as HTMLDivElement;
 const ctxLoadingSubtitle = document.getElementById('ctx-loading-subtitle') as HTMLDivElement;
 const navContextSummary = document.getElementById('nav-context-summary') as HTMLButtonElement;
+const navMarketResearch = document.getElementById('nav-market-research') as HTMLButtonElement;
 const contextSummaryPanel = document.getElementById('context-summary-panel') as HTMLDivElement;
 const contextSummaryOverview = document.getElementById('context-summary-overview') as HTMLDivElement;
 const contextSummaryPanels = document.getElementById('context-summary-panels') as HTMLDivElement;
+const marketResearchPanel = document.getElementById('market-research-panel') as HTMLDivElement;
+const marketResearchContent = document.getElementById('market-research-content') as HTMLDivElement;
 
 // Auth & Pages
 const authOverlay = document.getElementById('auth-overlay')!;
@@ -137,21 +141,17 @@ const avatarInput = document.getElementById('avatar-input') as HTMLInputElement;
 const profileActivityFeed = document.getElementById('profile-activity-feed')!;
 let currentUserId: string | null = null;
 
-let rightPanelView: 'brandscript' | 'context' = 'brandscript';
+let rightPanelView: 'brandscript' | 'context' | 'market' = 'brandscript';
 
-function setRightPanelView(view: 'brandscript' | 'context'): void {
+function setRightPanelView(view: 'brandscript' | 'context' | 'market'): void {
   rightPanelView = view;
   const hasContext = !!state.contextOverview && state.contextPanels.length > 0;
 
-  if (view === 'context' && hasContext) {
-    contextSummaryPanel.classList.remove('hidden');
-    brandscriptContent.classList.add('hidden');
-    navContextSummary.classList.add('active');
-  } else {
-    contextSummaryPanel.classList.add('hidden');
-    brandscriptContent.classList.remove('hidden');
-    navContextSummary.classList.remove('active');
-  }
+  contextSummaryPanel.classList.toggle('hidden', !(view === 'context' && hasContext));
+  marketResearchPanel.classList.toggle('hidden', view !== 'market');
+  brandscriptContent.classList.toggle('hidden', view !== 'brandscript');
+  navContextSummary.classList.toggle('active', view === 'context' && hasContext);
+  navMarketResearch.classList.toggle('active', view === 'market');
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ REFRESH ALL UI Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -159,8 +159,9 @@ function setRightPanelView(view: 'brandscript' | 'context'): void {
 function refreshUI(): void {
   renderNav(sectionNav, progressFill, progressPct, () => refreshUI(), startInterviewFlow);
   renderBrandscript(brandscriptContent);
+  renderMarketResearchPanel();
   if (rightPanelView !== 'context') {
-    setRightPanelView('brandscript');
+    setRightPanelView(rightPanelView === 'market' ? 'market' : 'brandscript');
   }
 }
 
@@ -381,6 +382,143 @@ export function renderContextSummary(overview: string, panels: ContextPanel[]): 
       </details>
     `;
   }).join('');
+}
+
+function marketMetric(label: string, value: string): string {
+  return `
+    <div class="mark-stat">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value || 'N/A')}</strong>
+    </div>
+  `;
+}
+
+function renderMarketResearchPanel(): void {
+  const marketData = state.marketData;
+  const context = state.userContext;
+
+  if (!marketData) {
+    marketResearchContent.innerHTML = `
+      <div class="mark-agent-card">
+        <div class="mark-avatar">M</div>
+        <div>
+          <h3>Mark, Market Research Agent</h3>
+          <p>Mark researches the user's industry and country, then turns the findings into a stats dashboard and strategic recommendation for the B.I.G Doc.</p>
+        </div>
+      </div>
+      <div class="mark-empty">
+        <h4>No market research generated yet</h4>
+        <p>Select Country, Industry, and Profession in Context Sources, then ask Mark to run the research.</p>
+        <button id="btn-run-market-research" class="btn-primary-sm" type="button">Run Mark Research</button>
+      </div>
+    `;
+  } else {
+    const overviewMetrics = marketData.industryOverview?.metrics?.slice(0, 6) || [];
+    const segmentMetrics = marketData.targetMarketSegmentation?.metrics?.slice(0, 4) || [];
+    const topRec = marketData.strategicRecommendations?.[0];
+    const sourceCount = state.firecrawlResults.reduce((sum, result) => sum + result.sources.length, 0);
+
+    marketResearchContent.innerHTML = `
+      <div class="mark-agent-card">
+        <div class="mark-avatar">M</div>
+        <div>
+          <h3>Mark, Market Research Agent</h3>
+          <p>${escapeHtml(context.industry || 'Selected industry')} research for ${escapeHtml(context.country || 'selected country')}.</p>
+        </div>
+      </div>
+      <div class="mark-dashboard-grid">
+        ${marketMetric('TAM', marketData.marketSizing?.tam?.value || 'N/A')}
+        ${marketMetric('SAM', marketData.marketSizing?.sam?.value || 'N/A')}
+        ${marketMetric('SOM', marketData.marketSizing?.som?.value || 'N/A')}
+        ${marketMetric('Growth', marketData.marketSizing?.growth_cagr || 'N/A')}
+        ${marketMetric('Sources', String(sourceCount))}
+        ${marketMetric('Competitor Sets', String(marketData.competitivePositioning?.competitors?.length || 0))}
+      </div>
+      <div class="mark-panel-section">
+        <h4>Market Snapshot</h4>
+        <p>${escapeHtml(marketData.executiveSummary)}</p>
+      </div>
+      <div class="mark-mini-metrics">
+        ${[...overviewMetrics, ...segmentMetrics].slice(0, 8).map(m => marketMetric(m.label, m.value)).join('')}
+      </div>
+      ${topRec ? `
+        <div class="mark-recommendation">
+          <span>Strategic Recommendation</span>
+          <h4>${escapeHtml(topRec.title)}</h4>
+          <p>${escapeHtml(topRec.roi)}. Priority: ${escapeHtml(topRec.priority)}. Timeline: ${escapeHtml(topRec.timeline)}.</p>
+          <ul>${topRec.steps.slice(0, 3).map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ul>
+        </div>
+      ` : ''}
+      <button id="btn-run-market-research" class="btn-primary-sm" type="button">Refresh Mark Research</button>
+    `;
+  }
+
+  document.getElementById('btn-run-market-research')?.addEventListener('click', () => {
+    runMarketResearchOnly();
+  });
+}
+
+async function runMarketResearchOnly(): Promise<void> {
+  const country = state.userContext.country || ctxCountry.value.trim() || 'South Africa';
+  const industry = state.userContext.industry || ctxIndustry.value.trim() || '';
+  const profession = state.userContext.profession || ctxProfession.value.trim() || '';
+  const services = state.userContext.services || ctxServices.value.trim() || '';
+
+  if (!country || !industry || !profession) {
+    addSystemMessage({
+      role: 'agent',
+      content: 'Please select your Country, Industry, and Profession before asking Mark to run market research.',
+    });
+    return;
+  }
+
+  setRightPanelView('market');
+  renderMarketResearchPanel();
+  navMarketResearch.setAttribute('aria-busy', 'true');
+
+  resetProcessingOverlay();
+  processingTitle.textContent = 'Mark Is Researching';
+  processingSubtitle.textContent = `Researching ${industry} in ${country}...`;
+  processingOverlay.classList.remove('hidden');
+  updateProgress(3);
+  addProcessingStep('Mark is preparing the research brief...', 3);
+
+  try {
+    const result = await generateMarketData({
+      brandContext: state.contextPayload,
+      country,
+      industry,
+      profession,
+      services,
+      onProgress: (step, pct) => {
+        updateProgress(pct, step);
+        addProcessingStep(step, pct);
+      },
+    });
+
+    state.marketData = result.marketData;
+    state.firecrawlResults = result.firecrawlResults;
+    saveSession();
+    renderMarketResearchPanel();
+    completeAllSteps();
+    updateProgress(100, 'Mark has completed the market research dashboard.');
+    addSystemMessage({
+      role: 'agent',
+      content: `Mark has completed a market research dashboard for **${industry}** in **${country}**. It will also be included in the B.I.G Doc PDF export.`,
+    });
+  } catch (err) {
+    console.error('Mark research error:', err);
+    addSystemMessage({
+      role: 'agent',
+      content: `Mark could not complete the market research: ${(err as Error).message || 'Unknown error'}`,
+    });
+  } finally {
+    navMarketResearch.removeAttribute('aria-busy');
+    setTimeout(() => {
+      processingOverlay.classList.add('hidden');
+      resetProcessingOverlay();
+    }, 1000);
+  }
 }
 
 function clearCollectedContext(): void {
@@ -729,6 +867,11 @@ navContextSummary.addEventListener('click', () => {
   contextPage.classList.remove('hidden');
 });
 
+navMarketResearch.addEventListener('click', () => {
+  renderMarketResearchPanel();
+  setRightPanelView('market');
+});
+
 // Reset
 btnReset.addEventListener('click', () => {
   if (confirm('Are you sure you want to reset? All progress will be lost.')) {
@@ -849,6 +992,10 @@ btnDownloadPdf.addEventListener('click', async () => {
     });
 
     const { marketData, firecrawlResults } = result;
+    state.marketData = marketData;
+    state.firecrawlResults = firecrawlResults;
+    saveSession();
+    renderMarketResearchPanel();
     const sourceCount = firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0);
 
     // Phase 2: Building the report
@@ -871,6 +1018,10 @@ btnDownloadPdf.addEventListener('click', async () => {
     addProcessingStep('Preparing download file...', 82);
     updateProgress(82);
     
+    // Add subtitle for user visibility on this heavy operation
+    processingSubtitle.textContent = 'Compiling PDF document. This may take up to 20 seconds depending on the file size...';
+    // Yield to the event loop so the UI updates
+    await new Promise(r => setTimeout(r, 100));
     
     const now = new Date();
     const formattedDate = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;

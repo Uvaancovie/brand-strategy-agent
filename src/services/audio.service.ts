@@ -146,6 +146,7 @@ export async function startRecording(
 
     audioState.isRecording = true;
     elements.btnMic.classList.add('recording');
+    elements.overlay.classList.remove('hidden');
     elements.overlay.classList.add('active');
     elements.liveText.innerHTML = '<span style="color: var(--text-muted)">Listening for speech...</span>';
 
@@ -243,6 +244,7 @@ export async function stopRecording(
       }
       elements.btnMic.classList.remove('recording');
       elements.overlay.classList.remove('active');
+      elements.overlay.classList.add('hidden');
       elements.timer.textContent = '00:00';
       elements.liveText.innerHTML = '';
     };
@@ -250,6 +252,7 @@ export async function stopRecording(
   } else {
     elements.btnMic.classList.remove('recording');
     elements.overlay.classList.remove('active');
+    elements.overlay.classList.add('hidden');
   }
 
   if (audioState.audioContext) {
@@ -293,6 +296,7 @@ export async function processAudioFile(
   onTranscript: (text: string) => void,
   onError: (msg: ChatMessage) => void
 ): Promise<void> {
+  overlayEl.classList.remove('hidden');
   overlayEl.classList.add('active');
   titleEl.textContent = 'Processing Audio';
   subtitleEl.textContent = `Transcribing "${file.name}" with Whisper AI...`;
@@ -311,6 +315,7 @@ export async function processAudioFile(
     } else if (isNonDecodable(file)) {
       // File is too large AND format can't be decoded by browser for chunking
       overlayEl.classList.remove('active');
+      overlayEl.classList.add('hidden');
       progressBar.style.width = '0%';
       onError({
         role: 'agent',
@@ -369,19 +374,21 @@ export async function processAudioFile(
     progressBar.style.width = '100%';
     setTimeout(() => {
       overlayEl.classList.remove('active');
+      overlayEl.classList.add('hidden');
       progressBar.style.width = '0%';
     }, 500);
 
     if (fullText.trim()) {
-      onTranscript(`📁 [Audio File: ${file.name}]\n\n${fullText.trim()}`);
+      onTranscript(`🎙️ [Audio File: ${file.name}]\n\n${fullText.trim()}`);
     } else {
-      onError({ role: 'agent', content: `📁 **Audio Processed** — No speech detected in "${file.name}".` });
+      onError({ role: 'agent', content: `🎙️ **Audio Processed** — No speech detected in "${file.name}".` });
     }
   } catch (e) {
     overlayEl.classList.remove('active');
+    overlayEl.classList.add('hidden');
     progressBar.style.width = '0%';
     console.error('Transcription error:', e);
-    onError({ role: 'agent', content: `📁 **Transcription Failed** — ${(e as Error).message}` });
+    onError({ role: 'agent', content: `🎙️ **Transcription Failed** — ${(e as Error).message}` });
   }
 }
 

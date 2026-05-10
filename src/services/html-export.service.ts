@@ -461,6 +461,42 @@ export function generateHtmlDoc(options: ExportOptions): string {
     <!-- MARKET INTELLIGENCE -->
     ${marketData ? `
     <div class="page-break">
+      <h2 class="section-title">Mark Market Research Dashboard</h2>
+      <div class="strategy-card" style="border-left-color: var(--brand-orange);">
+        <h4 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Mark, Market Research Agent</h4>
+        <p style="margin: 0;">Mark researched the user's industry and country, then translated the evidence into quantified market sizing, customer benchmarks, competitive pressure, and strategic next actions.</p>
+      </div>
+      <div class="metric-grid">
+        <div class="metric-box">
+          <div class="metric-box-label">TAM</div>
+          <div class="metric-box-val">${marketData.marketSizing?.tam.value || 'N/A'}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-box-label">SAM</div>
+          <div class="metric-box-val">${marketData.marketSizing?.sam.value || 'N/A'}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-box-label">SOM</div>
+          <div class="metric-box-val">${marketData.marketSizing?.som.value || 'N/A'}</div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-box-label">Growth</div>
+          <div class="metric-box-val">${marketData.marketSizing?.growth_cagr || 'N/A'}</div>
+        </div>
+      </div>
+      ${marketData.strategicRecommendations?.[0] ? `
+        <div class="strategy-card" style="border-left-color: var(--brand-amber);">
+          <div class="strategy-meta">Strategic Recommendation</div>
+          <h4 style="font-size: 1.4rem; color: var(--brand-charcoal);">${marketData.strategicRecommendations[0].title}</h4>
+          <p><strong>Priority:</strong> ${marketData.strategicRecommendations[0].priority} &nbsp; <strong>Timeline:</strong> ${marketData.strategicRecommendations[0].timeline} &nbsp; <strong>ROI:</strong> ${marketData.strategicRecommendations[0].roi}</p>
+          <ul style="margin-top: 1rem;">
+            ${marketData.strategicRecommendations[0].steps.slice(0, 3).map(step => `<li>${step}</li>`).join('')}
+          </ul>
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="page-break">
       <h2 class="section-title">Industry Overview</h2>
       <div class="metric-grid">
         ${marketData.industryOverview?.metrics.map(m => `

@@ -3,6 +3,8 @@
 
 import { FRAMEWORK, type BrandScript, type SectionId, type ChatMessage } from '../config/framework';
 import { saveBrandscriptToSupabase, loadBrandscriptFromSupabase } from '../services/brandscript.service';
+import type { MarketData } from '../services/market.service';
+import type { FirecrawlMarketResult } from '../services/firecrawl.service';
 
 const STORAGE_KEY = 'vmv8-brand-strategy-session';
 const MAX_HISTORY = 20;
@@ -50,6 +52,11 @@ export interface AppState {
   contextPanels: ContextPanel[];
   transcripts: Transcript[];
   recordingSessionCount: number;
+  // Mark: Market Research Agent state
+  marketData: MarketData | null;
+  firecrawlResults: FirecrawlMarketResult[];
+  markLoading: boolean;
+  markViewVisible: boolean;
 }
 
 function createEmptyBrandscript(): BrandScript {
@@ -80,6 +87,11 @@ export const state: AppState = {
   contextPanels: [],
   transcripts: [],
   recordingSessionCount: 0,
+  // Mark: Market Research Agent state
+  marketData: null,
+  firecrawlResults: [],
+  markLoading: false,
+  markViewVisible: false,
 };
 
 // ─── PERSISTENCE ────────────────────────────────────────────────────
@@ -97,6 +109,9 @@ export function saveSession(): void {
       contextPanels: state.contextPanels,
       transcripts: state.transcripts,
       recordingSessionCount: state.recordingSessionCount,
+      // Mark: Market Research Agent
+      marketData: state.marketData,
+      firecrawlResults: state.firecrawlResults,
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -197,6 +212,9 @@ export function loadSession(): boolean {
     if (data.contextPanels) state.contextPanels = data.contextPanels;
     if (data.transcripts) state.transcripts = data.transcripts;
     if (data.recordingSessionCount !== undefined) state.recordingSessionCount = data.recordingSessionCount;
+    // Mark: Market Research Agent - restore persisted research
+    if (data.marketData) state.marketData = data.marketData;
+    if (data.firecrawlResults) state.firecrawlResults = data.firecrawlResults;
     return true;
   } catch (e) {
     console.warn('Session load failed:', e);
@@ -216,6 +234,11 @@ export function clearSession(): void {
   state.contextPanels = [];
   state.transcripts = [];
   state.recordingSessionCount = 0;
+  // Mark: Market Research Agent
+  state.marketData = null;
+  state.firecrawlResults = [];
+  state.markLoading = false;
+  state.markViewVisible = false;
   localStorage.removeItem(STORAGE_KEY);
 }
 
