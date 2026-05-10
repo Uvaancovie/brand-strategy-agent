@@ -1,13 +1,11 @@
 // ─── AI CHAT SERVICE ────────────────────────────────────────────────
 // Chat completion (JSON mode) + audio transcription
-// Replaces fragile regex-based [EXTRACT:] parsing with typed JSON output
+// Uses Groq AI exclusively
 
-import { GoogleGenAI } from '@google/genai';
 import Groq from 'groq-sdk';
 import { SYSTEM_PROMPT } from '../config/prompts';
 import { FRAMEWORK, type AgentResponse, type Extraction } from '../config/framework';
 import { state, getTrimmedHistory } from '../store/brandscript.store';
-import { generateOllamaJson, type OllamaChatMessage } from './ollama.service';
 
 const API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 export const groq = new Groq({ 
@@ -17,17 +15,14 @@ export const groq = new Groq({
   maxRetries: 2
 });
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
-const GOOGLE_MODELS = (import.meta.env.VITE_GOOGLE_MODELS || import.meta.env.VITE_GOOGLE_MODEL || 'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash')
+const GROQ_MODELS = (import.meta.env.VITE_GROQ_MODELS || import.meta.env.VITE_GROQ_MODEL || 'llama-3.1-8b-instant,llama-3.3-70b-versatile')
   .split(',')
   .map((model: string) => model.trim())
   .filter(Boolean);
-const gemini = GOOGLE_API_KEY ? new GoogleGenAI({ apiKey: GOOGLE_API_KEY }) : null;
-const OLLAMA_RETRIES = 1;
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-function isGeminiQuotaError(err: unknown): boolean {
+function isGroqQuotaError(err: unknown): boolean {
   const message = String((err as Error)?.message || err).toLowerCase();
   return (
     message.includes('quota') ||
@@ -54,16 +49,20 @@ function buildBrandscriptContext(): string {
 // ─── CHAT COMPLETION (JSON MODE) ────────────────────────────────────
 
 export async function callGroq(userText: string, retries = 2, referenceContext = ''): Promise<AgentResponse> {
+  if (!API_KEY) {
+    throw new Error('Missing Groq API key. Set VITE_GROQ_API_KEY.');
+  }
+
   // Truncate reference context to prevent exceeding token limits (e.g., 6000 TPM limit on Groq free tier)
   // We keep the last 3000 characters to stay within tight token budgets.
   const MAX_REF_LENGTH = 3000;
   let trimmedReference = referenceContext.trim();
   if (trimmedReference.length > MAX_REF_LENGTH) {
-    trimmedReference = '...[earlier context truncated]...\\n' + trimmedReference.slice(-MAX_REF_LENGTH);
+    trimmedReference = '...[earlier context truncated]...\n' + trimmedReference.slice(-MAX_REF_LENGTH);
   }
 
   const referenceInjection = trimmedReference
-    ? `\\n\\n## COLLECTED BUSINESS CONTEXT (REFERENCE ONLY):\\n${trimmedReference}\\n\\nUse this only as supporting context for responses. Do not proactively fill framework fields unless the user explicitly asks to extract or refine section answers in their current message.`
+    ? `\n\n## COLLECTED BUSINESS CONTEXT (REFERENCE ONLY):\n${trimmedReference}\n\nUse this only as supporting context for responses. Do not proactively fill framework fields unless the user explicitly asks to extract or refine section answers in their current message.`
     : '';
 
   const contextInjection = `\n\n---\n## CURRENT B.I.G DOC STATUS:\n${buildBrandscriptContext()}${referenceInjection}\n---\n`;
@@ -81,86 +80,56 @@ export async function callGroq(userText: string, retries = 2, referenceContext =
     ? userText.slice(0, MAX_USER_TEXT) + '...[input truncated for performance]...'
     : userText;
 
-  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: SYSTEM_PROMPT + contextInjection },
+  const messages = [
+    { role: 'system' as const, content: SYSTEM_PROMPT + contextInjection },
     ...trimmedHistory.map(m => ({
       role: (m.role === 'agent' ? 'assistant' : 'user') as 'user' | 'assistant',
       content: m.content,
     })),
-    { role: 'user', content: processedUserText }
+    { role: 'user' as const, content: processedUserText }
   ];
 
-  const ollamaMessages: OllamaChatMessage[] = messages;
+  let lastError: unknown = null;
 
-  const promptText = messages
-    .map(message => {
-      const prefix = message.role === 'system'
-        ? 'SYSTEM'
-        : message.role === 'assistant'
-          ? 'ASSISTANT'
-          : 'USER';
-      return `${prefix}: ${message.content}`;
-    })
-    .join('\n\n');
+  for (const model of GROQ_MODELS) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const response = await groq.chat.completions.create({
+          model,
+          messages,
+          temperature: 0.2,
+          max_tokens: 2048,
+          response_format: { type: 'json_object' },
+        });
 
-  async function generateWithGeminiJson(prompt: string): Promise<string> {
-    if (!gemini) {
-      throw new Error('Missing Gemini API key. Set VITE_GOOGLE_API_KEY or VITE_GEMINI_API_KEY.');
-    }
-
-    let lastError: unknown = null;
-
-    for (const model of GOOGLE_MODELS) {
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          const response = await gemini.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              temperature: 0.2,
-              maxOutputTokens: 2048,
-              responseMimeType: 'application/json',
-            },
-          });
-
-          return response.text || '{}';
-        } catch (err) {
-          lastError = err;
-          const message = String((err as Error)?.message || err);
-          if (!isGeminiQuotaError(err) || attempt >= retries) break;
-
-          const backoff = 1000 * Math.pow(2, attempt);
-          console.warn(`Gemini ${model} retry ${attempt + 1}/${retries + 1} after ${backoff}ms:`, message);
-          await delay(backoff);
+        const raw = response.choices[0]?.message?.content || '{}';
+        return parseAgentResponse(raw);
+      } catch (err: unknown) {
+        lastError = err;
+        const errorMsg = String((err as Error)?.message || err);
+        
+        // Check if this is a quota/rate limit error that we should retry
+        if (!isGroqQuotaError(err) || attempt >= retries) {
+          break;
         }
+
+        // For quota errors, try next model
+        console.warn(`Groq ${model} failed (attempt ${attempt + 1}/${retries + 1}):`, errorMsg);
+        await delay(1000 * Math.pow(2, attempt));
       }
     }
-
-    throw lastError instanceof Error ? lastError : new Error('Gemini request failed.');
   }
 
-  try {
-    const raw = await generateWithGeminiJson(promptText);
-    return parseAgentResponse(raw);
-
-  } catch (err: unknown) {
-    try {
-      const raw = await generateOllamaJson(ollamaMessages, OLLAMA_RETRIES);
-      return parseAgentResponse(raw);
-    } catch (ollamaError) {
-      console.warn('Ollama fallback failed for chat completion:', ollamaError);
-
-      if (isGeminiQuotaError(err)) {
-        console.warn('Gemini quota exhausted; returning a safe fallback chat response.', err);
-        return {
-          message: 'The AI service is temporarily rate-limited. Please try again in a few minutes.',
-          extractions: [],
-        };
-      }
-
-      throw err;
-    }
+  // If all Groq models failed due to quota, return a helpful fallback
+  if (isGroqQuotaError(lastError)) {
+    console.warn('Groq quota exhausted; returning a safe fallback chat response.', lastError);
+    return {
+      message: 'The AI service is temporarily rate-limited. Please try again in a few minutes.',
+      extractions: [],
+    };
   }
+
+  throw lastError instanceof Error ? lastError : new Error('Groq request failed.');
 }
 
 // ─── PARSE JSON RESPONSE ────────────────────────────────────────────

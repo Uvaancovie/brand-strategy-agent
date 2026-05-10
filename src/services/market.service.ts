@@ -1,11 +1,11 @@
 // ─── MARKET INTELLIGENCE SERVICE (MARK AGENT) ────────────────────────
 // Generates structured, quantitative market intelligence via:
 // 1. Firecrawl /search for REAL country-specific market data
-// 2. Gemini AI to synthesize and structure the research
+// 2. Groq AI to synthesize and structure the research
 // Includes hard numbers, benchmarks & KPIs.
 // AMA Framework: Data → Analysis → Action
 
-import { GoogleGenAI } from '@google/genai';
+import Groq from 'groq-sdk';
 import {
   searchMarketResearch,
   buildResearchBrief,
@@ -14,7 +14,7 @@ import {
   type FirecrawlMarketResult,
   type MarketResearchParams,
 } from './firecrawl.service';
-import { generateOllamaJson, type OllamaChatMessage } from './ollama.service';
+// Strictly using Groq - no Ollama fallback
 
 // ─── OUTPUT TYPES ───────────────────────────────────────────────────
 
@@ -73,19 +73,20 @@ export interface MarketData {
   extractedMetrics?: BoxMetric[];
 }
 
-// ─── GEMINI INITIALIZATION ──────────────────────────────────────────
+// ─── GROQ INITIALIZATION ──────────────────────────────────────────────
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
-const GOOGLE_MODELS = (import.meta.env.VITE_GOOGLE_MODELS || import.meta.env.VITE_GOOGLE_MODEL || 'gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash')
+const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY || '';
+const GROQ_MODELS = (import.meta.env.VITE_GROQ_MODELS || import.meta.env.VITE_GROQ_MODEL || 'llama-3.1-8b-instant,llama-3.3-70b-versatile')
   .split(',')
   .map((model: string) => model.trim())
   .filter(Boolean);
-const gemini = GOOGLE_API_KEY ? new GoogleGenAI({ apiKey: GOOGLE_API_KEY }) : null;
+const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY, dangerouslyAllowBrowser: true }) : null;
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-const OLLAMA_RETRIES = 1;
+const MAX_BRAND_CONTEXT_CHARS = 1200;
+const MAX_RESEARCH_BRIEF_CHARS = 2500;
 
-function isGeminiQuotaError(err: unknown): boolean {
+function isGroqQuotaError(err: unknown): boolean {
   const message = String((err as Error)?.message || err).toLowerCase();
   return (
     message.includes('quota') ||
@@ -419,6 +420,46 @@ function cleanJson(raw: string): string {
   return first >= 0 && last > first ? trimmed.slice(first, last + 1) : trimmed;
 }
 
+function limitText(text: string, maxChars: number): string {
+  const compact = (text || '').replace(/\s+/g, ' ').trim();
+  return compact.length > maxChars ? `${compact.slice(0, maxChars)}...` : compact;
+}
+
+function buildCompactMarketPrompt(
+  brandContext: string,
+  researchBrief: string,
+  country: string,
+  industry: string,
+  profession: string,
+  services?: string
+): string {
+  const currency = getCurrency(country);
+  return `You are Mark, Volcanic Marketing's market research agent. Create a concise, quantified market intelligence JSON report for:
+Country: ${country}
+Industry: ${industry}
+Profession: ${profession}
+Services: ${services || 'Not specified'}
+Currency: ${currency}
+
+Brand context:
+${limitText(brandContext, MAX_BRAND_CONTEXT_CHARS) || 'No brand context provided.'}
+
+Research evidence:
+${limitText(researchBrief, MAX_RESEARCH_BRIEF_CHARS) || 'No live source evidence available. Use conservative estimates and mark unknown values as N/A.'}
+
+Return only valid JSON. Keep every narrative under 80 words. Use N/A where source evidence is weak. Match this shape exactly:
+{
+  "executiveSummary": "short summary with 2-3 useful stats or N/A caveats",
+  "industryOverview": { "narrative": "short landscape", "metrics": [{ "label": "MARKET VALUE", "value": "${currency} ..." }, { "label": "GROWTH", "value": "..." }, { "label": "KEY TREND", "value": "..." }] },
+  "marketSizing": { "tam": { "value": "...", "description": "..." }, "sam": { "value": "...", "description": "..." }, "som": { "value": "...", "description": "..." }, "growth_cagr": "...", "narrative": "short method" },
+  "targetMarketSegmentation": { "primary": { "name": "...", "description": "...", "demographics": "...", "psychographics": "..." }, "secondary": { "name": "...", "description": "...", "demographics": "...", "psychographics": "..." }, "metrics": [{ "label": "CAC", "value": "..." }, { "label": "CLV", "value": "..." }] },
+  "competitivePositioning": { "competitors": [{ "archetype": "...", "market_share": "...", "price_tier": "...", "strength": "...", "weakness": "..." }], "narrative": "short competitive read" },
+  "swotAnalysis": { "strengths": [{ "factor": "...", "impact": "..." }], "weaknesses": [{ "factor": "...", "impact": "..." }], "opportunities": [{ "factor": "...", "impact": "..." }], "threats": [{ "factor": "...", "impact": "..." }] },
+  "strategicRecommendations": [{ "title": "...", "timeline": "...", "investment": "...", "roi": "...", "priority": "High", "steps": ["...", "...", "..."] }],
+  "kpiFramework": [{ "category": "Growth", "metric": "...", "baseline": "...", "target_6m": "...", "target_12m": "...", "frequency": "Monthly" }]
+}`;
+}
+
 function normalizeMarketData(parsed: Partial<MarketData>, fallback: MarketData): MarketData {
   return {
     executiveSummary: parsed.executiveSummary || fallback.executiveSummary,
@@ -455,32 +496,38 @@ function normalizeMarketData(parsed: Partial<MarketData>, fallback: MarketData):
   };
 }
 
-async function generateWithGemini(prompt: string): Promise<string> {
-  if (!gemini) {
-    throw new Error('Missing Gemini API key. Set VITE_GOOGLE_API_KEY or VITE_GEMINI_API_KEY.');
+async function generateWithGroq(prompt: string): Promise<string> {
+  if (!groq) {
+    throw new Error('Missing Groq API key. Set VITE_GROQ_API_KEY.');
   }
 
   let lastError: unknown = null;
-  for (const model of GOOGLE_MODELS) {
+  for (const model of GROQ_MODELS) {
     try {
-      const response = await gemini.models.generateContent({
+      const response = await groq.chat.completions.create({
         model,
-        contents: prompt,
-        config: {
-          temperature: 0.2,
-          maxOutputTokens: 8192,
-          responseMimeType: 'application/json',
-        },
+        messages: [
+          { role: 'system', content: 'Return only valid JSON for a market intelligence report. No markdown.' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 2800,
+        response_format: { type: 'json_object' },
       });
-      return response.text || '{}';
-    } catch (err) {
+      return response.choices[0]?.message?.content || '{}';
+    } catch (err: any) {
       lastError = err;
-      if (!isGeminiQuotaError(err)) break;
+      const errorMsg = String(err?.message || err).toLowerCase();
+      // Retry on quota/rate limit errors, but not on auth or model errors
+      const shouldRetry = !errorMsg.includes('api key') && !errorMsg.includes('not found') && 
+                          (errorMsg.includes('quota') || errorMsg.includes('rate') || 
+                           errorMsg.includes('429') || errorMsg.includes('limit'));
+      if (!shouldRetry) break;
       await delay(1000);
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error('Gemini market research request failed.');
+  throw lastError instanceof Error ? lastError : new Error('Groq market research request failed.');
 }
 
 export async function generateMarketData(params: GenerateMarketDataParams): Promise<GenerateMarketDataResult> {
@@ -510,18 +557,10 @@ export async function generateMarketData(params: GenerateMarketDataParams): Prom
 
   try {
     onProgress?.('Mark is synthesizing the stats dashboard and recommendations...', 62);
-    const prompt = buildMarketPrompt(brandContext, researchBrief, country, industry, profession, services);
+    const prompt = buildCompactMarketPrompt(brandContext, researchBrief, country, industry, profession, services);
     let raw = '';
 
-    try {
-      raw = await generateWithGemini(prompt);
-    } catch (geminiError) {
-      const messages: OllamaChatMessage[] = [
-        { role: 'system', content: 'Return only valid JSON for a market intelligence report. No markdown.' },
-        { role: 'user', content: prompt },
-      ];
-      raw = await generateOllamaJson(messages, OLLAMA_RETRIES);
-    }
+    raw = await generateWithGroq(prompt);
 
     const parsed = JSON.parse(cleanJson(raw)) as Partial<MarketData>;
     const marketData = normalizeMarketData(parsed, fallback);

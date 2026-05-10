@@ -371,7 +371,7 @@ export function renderMarkPanel(
       input.value = '';
     }
   });
-  container.querySelector('#mark-chat-input')?.addEventListener('keydown', (e) => {
+  container.querySelector('#mark-chat-input')?.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.key === 'Enter') {
       const input = container.querySelector('#mark-chat-input') as HTMLInputElement;
       if (input.value.trim()) {

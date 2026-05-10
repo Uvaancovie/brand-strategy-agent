@@ -22,7 +22,8 @@ import { scrapeContextSources } from './services/scrape.service';
 import { processCSVFile } from './services/csv.service';
 import { supabase, getCurrentSession, setupAuthListener } from './services/supabase.service';
 import { getProfile, upsertProfile, uploadAvatar, logActivity, getActivity, getActivityStats } from './services/profile.service';
-import { generateMarketData, type GenerateMarketDataResult } from './services/market.service';
+import { generateMarketData, type GenerateMarketDataResult, type MarketData } from './services/market.service';
+import type { FirecrawlMarketResult } from './services/firecrawl.service';
 import { saveBrandscriptToSupabase } from './services/brandscript.service';
 import { saveMarketResearch, saveDocumentExport } from './services/brandscript.service';
 import { generateHtmlDoc } from './services/html-export.service';
@@ -384,142 +385,8 @@ export function renderContextSummary(overview: string, panels: ContextPanel[]): 
   }).join('');
 }
 
-function marketMetric(label: string, value: string): string {
-  return `
-    <div class="mark-stat">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value || 'N/A')}</strong>
-    </div>
-  `;
-}
-
-function renderMarketResearchPanel(): void {
-  const marketData = state.marketData;
-  const context = state.userContext;
-
-  if (!marketData) {
-    marketResearchContent.innerHTML = `
-      <div class="mark-agent-card">
-        <div class="mark-avatar">M</div>
-        <div>
-          <h3>Mark, Market Research Agent</h3>
-          <p>Mark researches the user's industry and country, then turns the findings into a stats dashboard and strategic recommendation for the B.I.G Doc.</p>
-        </div>
-      </div>
-      <div class="mark-empty">
-        <h4>No market research generated yet</h4>
-        <p>Select Country, Industry, and Profession in Context Sources, then ask Mark to run the research.</p>
-        <button id="btn-run-market-research" class="btn-primary-sm" type="button">Run Mark Research</button>
-      </div>
-    `;
-  } else {
-    const overviewMetrics = marketData.industryOverview?.metrics?.slice(0, 6) || [];
-    const segmentMetrics = marketData.targetMarketSegmentation?.metrics?.slice(0, 4) || [];
-    const topRec = marketData.strategicRecommendations?.[0];
-    const sourceCount = state.firecrawlResults.reduce((sum, result) => sum + result.sources.length, 0);
-
-    marketResearchContent.innerHTML = `
-      <div class="mark-agent-card">
-        <div class="mark-avatar">M</div>
-        <div>
-          <h3>Mark, Market Research Agent</h3>
-          <p>${escapeHtml(context.industry || 'Selected industry')} research for ${escapeHtml(context.country || 'selected country')}.</p>
-        </div>
-      </div>
-      <div class="mark-dashboard-grid">
-        ${marketMetric('TAM', marketData.marketSizing?.tam?.value || 'N/A')}
-        ${marketMetric('SAM', marketData.marketSizing?.sam?.value || 'N/A')}
-        ${marketMetric('SOM', marketData.marketSizing?.som?.value || 'N/A')}
-        ${marketMetric('Growth', marketData.marketSizing?.growth_cagr || 'N/A')}
-        ${marketMetric('Sources', String(sourceCount))}
-        ${marketMetric('Competitor Sets', String(marketData.competitivePositioning?.competitors?.length || 0))}
-      </div>
-      <div class="mark-panel-section">
-        <h4>Market Snapshot</h4>
-        <p>${escapeHtml(marketData.executiveSummary)}</p>
-      </div>
-      <div class="mark-mini-metrics">
-        ${[...overviewMetrics, ...segmentMetrics].slice(0, 8).map(m => marketMetric(m.label, m.value)).join('')}
-      </div>
-      ${topRec ? `
-        <div class="mark-recommendation">
-          <span>Strategic Recommendation</span>
-          <h4>${escapeHtml(topRec.title)}</h4>
-          <p>${escapeHtml(topRec.roi)}. Priority: ${escapeHtml(topRec.priority)}. Timeline: ${escapeHtml(topRec.timeline)}.</p>
-          <ul>${topRec.steps.slice(0, 3).map(step => `<li>${escapeHtml(step)}</li>`).join('')}</ul>
-        </div>
-      ` : ''}
-      <button id="btn-run-market-research" class="btn-primary-sm" type="button">Refresh Mark Research</button>
-    `;
-  }
-
-  document.getElementById('btn-run-market-research')?.addEventListener('click', () => {
-    runMarketResearchOnly();
-  });
-}
-
-async function runMarketResearchOnly(): Promise<void> {
-  const country = state.userContext.country || ctxCountry.value.trim() || 'South Africa';
-  const industry = state.userContext.industry || ctxIndustry.value.trim() || '';
-  const profession = state.userContext.profession || ctxProfession.value.trim() || '';
-  const services = state.userContext.services || ctxServices.value.trim() || '';
-
-  if (!country || !industry || !profession) {
-    addSystemMessage({
-      role: 'agent',
-      content: 'Please select your Country, Industry, and Profession before asking Mark to run market research.',
-    });
-    return;
-  }
-
-  setRightPanelView('market');
-  renderMarketResearchPanel();
-  navMarketResearch.setAttribute('aria-busy', 'true');
-
-  resetProcessingOverlay();
-  processingTitle.textContent = 'Mark Is Researching';
-  processingSubtitle.textContent = `Researching ${industry} in ${country}...`;
-  processingOverlay.classList.remove('hidden');
-  updateProgress(3);
-  addProcessingStep('Mark is preparing the research brief...', 3);
-
-  try {
-    const result = await generateMarketData({
-      brandContext: state.contextPayload,
-      country,
-      industry,
-      profession,
-      services,
-      onProgress: (step, pct) => {
-        updateProgress(pct, step);
-        addProcessingStep(step, pct);
-      },
-    });
-
-    state.marketData = result.marketData;
-    state.firecrawlResults = result.firecrawlResults;
-    saveSession();
-    renderMarketResearchPanel();
-    completeAllSteps();
-    updateProgress(100, 'Mark has completed the market research dashboard.');
-    addSystemMessage({
-      role: 'agent',
-      content: `Mark has completed a market research dashboard for **${industry}** in **${country}**. It will also be included in the B.I.G Doc PDF export.`,
-    });
-  } catch (err) {
-    console.error('Mark research error:', err);
-    addSystemMessage({
-      role: 'agent',
-      content: `Mark could not complete the market research: ${(err as Error).message || 'Unknown error'}`,
-    });
-  } finally {
-    navMarketResearch.removeAttribute('aria-busy');
-    setTimeout(() => {
-      processingOverlay.classList.add('hidden');
-      resetProcessingOverlay();
-    }, 1000);
-  }
-}
+// Removed duplicate renderMarketResearchPanel and runMarketResearchOnly functions
+// The newer versions below (starting at line 997) replace these
 
 function clearCollectedContext(): void {
   state.contextPayload = '';
@@ -871,6 +738,641 @@ navMarketResearch.addEventListener('click', () => {
   renderMarketResearchPanel();
   setRightPanelView('market');
 });
+
+// ─── MARK: MARKET RESEARCH PANEL ──────────────────────────────────────
+
+let markResearchRunning = false;
+
+async function runMarkResearch(): Promise<void> {
+  if (markResearchRunning) return;
+  markResearchRunning = true;
+
+  const country = state.userContext.country || ctxCountry.value.trim() || 'South Africa';
+  const industry = state.userContext.industry || ctxIndustry.value.trim() || '';
+  const profession = state.userContext.profession || ctxProfession.value.trim() || '';
+  const services = state.userContext.services || ctxServices.value.trim() || '';
+
+  if (!country || !industry || !profession) {
+    addSystemMessage({
+      role: 'agent',
+      content: '⚠️ Please select your **Country**, **Industry**, and **Profession** in the Context Sources panel before running market research.',
+    });
+    markResearchRunning = false;
+    return;
+  }
+
+  state.markLoading = true;
+  renderMarketResearchPanel();
+
+  try {
+    const result = await generateMarketData({
+      brandContext: state.contextPayload,
+      country,
+      industry,
+      profession,
+      services,
+      onProgress: (step, pct) => {
+        // Update loading status in the Mark panel if it's visible
+        const statusEl = document.getElementById('mark-loading-status');
+        const barEl = document.getElementById('mark-loading-bar');
+        if (statusEl) statusEl.textContent = step;
+        if (barEl) barEl.style.width = `${pct}%`;
+      },
+    });
+
+    state.marketData = result.marketData;
+    state.firecrawlResults = result.firecrawlResults;
+    state.markLoading = false;
+    saveSession();
+    renderMarketResearchPanel();
+
+    if (currentUserId) {
+      await saveMarketResearch({
+        user_id: currentUserId,
+        country,
+        industry,
+        profession,
+        firecrawl_results: result.firecrawlResults,
+        market_data: result.marketData,
+      });
+      logActivity(currentUserId, 'prompt', 'Market research generated', `${country} · ${industry}`);
+    }
+
+    // Switch to Mark panel
+    setRightPanelView('market');
+
+  } catch (err) {
+    state.markLoading = false;
+    console.error('Mark research error:', err);
+    renderMarketResearchPanel();
+  } finally {
+    markResearchRunning = false;
+  }
+}
+
+async function handleMarkFollowUp(question: string): Promise<void> {
+  if (!state.marketData || !question.trim()) return;
+
+  const chatContainer = document.getElementById('mark-chat-messages');
+  if (!chatContainer) return;
+
+  // Add user question
+  const userDiv = document.createElement('div');
+  userDiv.className = 'mark-chat-message mark-chat-user';
+  userDiv.innerHTML = `<div class="mark-chat-bubble">${escapeHtml(question)}</div>`;
+  chatContainer.appendChild(userDiv);
+
+  // Build context from market data
+  const marketContext = `
+MARK MARKET RESEARCH CONTEXT:
+- Industry: ${state.userContext.industry}
+- Country: ${state.userContext.country}
+- TAM: ${state.marketData.marketSizing?.tam?.value}
+- SAM: ${state.marketData.marketSizing?.sam?.value}
+- SOM: ${state.marketData.marketSizing?.som?.value}
+- CAGR: ${state.marketData.marketSizing?.growth_cagr}
+- Key competitors: ${state.marketData.competitivePositioning?.competitors?.map(c => c.archetype + ' (' + c.market_share + ')').join(', ')}
+
+KEY FINDINGS:
+${state.marketData.industryOverview?.narrative?.substring(0, 1000) || 'No industry overview available.'}
+
+EXECUTIVE SUMMARY:
+${state.marketData.executiveSummary}
+`;
+
+  try {
+    // Use Groq for Mark follow-up questions
+    const response = await callGroqMarkFollowUp(question, marketContext);
+
+    const agentDiv = document.createElement('div');
+    agentDiv.className = 'mark-chat-message mark-chat-agent';
+    agentDiv.innerHTML = `<div class="mark-chat-bubble mark-chat-agent-bubble">
+      <div class="mark-chat-sender">Mark — Market Analyst</div>
+      ${formatMarkChatResponse(response)}
+    </div>`;
+    chatContainer.appendChild(agentDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  } catch (err) {
+    const errDiv = document.createElement('div');
+    errDiv.className = 'mark-chat-message mark-chat-agent';
+    errDiv.innerHTML = `<div class="mark-chat-bubble"><em>Sorry, I couldn't process that question. The AI service may be temporarily unavailable.</em></div>`;
+    chatContainer.appendChild(errDiv);
+  }
+}
+
+async function callGroqMarkFollowUp(question: string, marketContext: string): Promise<string> {
+  const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+  if (!GROQ_API_KEY) {
+    throw new Error('Missing Groq API key');
+  }
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        {
+          role: 'system',
+          content: `You are Mark — Volcanic Marketing's Market Research Agent. You have access to detailed market research data above. Answer the user's follow-up question using ONLY the market data provided. Be specific, cite data points, and maintain a professional consulting tone. Keep responses concise and actionable. Do not use markdown formatting.`
+        },
+        {
+          role: 'user',
+          content: marketContext + '\n\nQUESTION: ' + question
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 1024,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Groq API error: ${response.status} ${error}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || 'No response available.';
+}
+
+function renderMarketResearchPanel(): void {
+  if (markResearchRunning) {
+    // Show loading state handled by MarkPanel
+  }
+
+  const marketData = state.marketData;
+  const firecrawlResults = state.firecrawlResults;
+  const isLoading = state.markLoading;
+
+  if (!marketData && !isLoading) {
+    // Show empty state
+    renderMarkPanelEmpty();
+    return;
+  }
+
+  renderMarkPanelFull(marketData, firecrawlResults, isLoading);
+}
+
+function renderMarkPanelEmpty(): void {
+  const container = document.getElementById('market-research-content');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="mark-empty">
+      <div class="mark-empty-icon">📊</div>
+      <h3>Market Intelligence</h3>
+      <p>Run market research to generate a comprehensive analysis of your industry, competitors, and target market.</p>
+      <p class="mark-empty-sub">Mark will search real web sources, analyze quantitative metrics, and build a complete market intelligence report.</p>
+      <button class="btn-mark-run" id="btn-mark-run-start">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Run Market Research
+      </button>
+      <p class="mark-empty-note">Uses Firecrawl web search + Groq AI analysis</p>
+    </div>
+  `;
+
+  document.getElementById('btn-mark-run-start')?.addEventListener('click', () => {
+    renderMarketResearchPanel();
+    runMarkResearch();
+  });
+}
+
+function renderMarkPanelFull(
+  marketData: MarketData | null,
+  firecrawlResults: FirecrawlMarketResult[],
+  isLoading: boolean
+): void {
+  const container = document.getElementById('market-research-content');
+  if (!container) return;
+
+  if (isLoading) {
+    container.innerHTML = `
+      <div class="mark-loading">
+        <div class="mark-loading-spinner"></div>
+        <h3>Mark is researching your market...</h3>
+        <p>Searching web sources and collecting data.</p>
+        <div class="mark-loading-progress"><div class="mark-loading-bar" id="mark-loading-bar"></div></div>
+        <p class="mark-loading-status" id="mark-loading-status">Initializing search...</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!marketData) {
+    renderMarkPanelEmpty();
+    return;
+  }
+
+  const totalSources = firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0);
+  const currency = getCurrencyForCountry(state.userContext.country || '');
+
+  // Build key metrics
+  const allMetrics = extractQuantitativeMetrics(marketData);
+  const metricsHtml = allMetrics.length > 0
+    ? allMetrics.map(m => `
+        <div class="mark-metric-card">
+          <div class="mark-metric-value">${escapeHtml(m.value)}</div>
+          <div class="mark-metric-label">${escapeHtml(m.label)}</div>
+        </div>
+      `).join('')
+    : '<p class="mark-no-metrics">No quantitative metrics extracted yet.</p>';
+
+  // Build SWOT mini cards
+  const swotHtml = buildSwotHtml(marketData);
+
+  // Build competitor cards
+  const competitorHtml = marketData.competitivePositioning?.competitors && marketData.competitivePositioning.competitors.length > 0
+    ? marketData.competitivePositioning.competitors.map(c => `
+        <div class="mark-competitor-card">
+          <div class="mark-competitor-header">
+            <span class="mark-competitor-archetype">${escapeHtml(c.archetype)}</span>
+            <span class="mark-competitor-share">${c.market_share} share</span>
+          </div>
+          <div class="mark-competitor-details">
+            <div class="mark-competitor-row"><span class="mark-competitor-label">Pricing:</span><span>${c.price_tier}</span></div>
+            <div class="mark-competitor-row"><span class="mark-competitor-label">Strength:</span><span class="mark-competitor-positive">${escapeHtml(c.strength)}</span></div>
+            <div class="mark-competitor-row"><span class="mark-competitor-label">Weakness:</span><span class="mark-competitor-negative">${escapeHtml(c.weakness)}</span></div>
+          </div>
+        </div>
+      `).join('')
+    : '<p class="mark-no-data">No competitor data available.</p>';
+
+  // Build KPI rows
+  const kpiHtml = marketData.kpiFramework && marketData.kpiFramework.length > 0
+    ? marketData.kpiFramework.map(k => `
+        <div class="mark-kpi-row">
+          <span class="mark-kpi-category">${escapeHtml(k.category)}</span>
+          <span class="mark-kpi-metric">${escapeHtml(k.metric)}</span>
+          <span class="mark-kpi-baseline">${escapeHtml(k.baseline)}</span>
+          <span class="mark-kpi-target">${escapeHtml(k.target_6m)}</span>
+          <span class="mark-kpi-target mark-kpi-target-12m">${escapeHtml(k.target_12m)}</span>
+          <span class="mark-kpi-freq">${escapeHtml(k.frequency)}</span>
+        </div>
+      `).join('')
+    : '<p class="mark-no-data">No KPI framework generated.</p>';
+
+  // Build source quality rows
+  const sourceQualityHtml = firecrawlResults.length > 0
+    ? firecrawlResults.map(result => {
+        const sources = result.sources || [];
+        const ratedSources = sources.map(s => {
+          const score = (s as any).qualityScore || 1;
+          return { ...s, qualityScore: score };
+        });
+        const high = ratedSources.filter(s => s.qualityScore >= 3).length;
+        const med = ratedSources.filter(s => s.qualityScore === 2).length;
+        const low = ratedSources.filter(s => s.qualityScore <= 1).length;
+        return { query: result.query, high, med, low, total: sources.length };
+      }).map(q => `
+        <div class="mark-quality-row">
+          <span class="mark-quality-label">${escapeHtml(q.query.slice(0, 45))}...</span>
+          <div class="mark-quality-bars">
+            <span class="mark-quality-bar high" style="width:${Math.max(q.high * 4, 4)}px" title="${q.high} official"></span>
+            <span class="mark-quality-bar medium" style="width:${Math.max(q.med * 4, 4)}px" title="${q.med} reputable"></span>
+            <span class="mark-quality-bar low" style="width:${Math.max(q.low * 4, 4)}px" title="${q.low} general"></span>
+          </div>
+          <span class="mark-quality-count">${q.total}</span>
+        </div>
+      `).join('')
+    : '';
+
+  // Sources list
+  const sourcesHtml = firecrawlResults.length > 0
+    ? firecrawlResults.map(result =>
+        (result.sources || []).map(s => {
+          const qualityScore = (s as any).qualityScore || 1;
+          const qualityTag = qualityScore >= 3 ? 'official' : qualityScore >= 2 ? 'reputable' : 'general';
+          const metrics = (s as any).extractedMetrics || [];
+          return `
+            <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener" class="mark-source-item">
+              <span class="mark-source-quality badge-${qualityTag}">${qualityTag}</span>
+              <span class="mark-source-title">${escapeHtml(s.title)}</span>
+              <span class="mark-source-url">${escapeHtml(s.url.slice(0, 70))}...</span>
+              ${metrics.length > 0 ? `<span class="mark-source-metrics">${escapeHtml(metrics.slice(0, 3).join(', '))}</span>` : ''}
+            </a>
+          `;
+        }).join('')
+      ).join('')
+    : '<p class="mark-no-data">No sources found.</p>';
+
+  container.innerHTML = `
+    <div class="mark-panel-inner">
+      <!-- Mark Header -->
+      <div class="mark-header">
+        <div class="mark-header-info">
+          <div class="mark-agent-badge">AGENT 02 — MARK</div>
+          <h2>Market Intelligence Dashboard</h2>
+          <p class="mark-subtitle">Quantitative analysis powered by Firecrawl + Groq AI</p>
+        </div>
+        <button class="btn-mark-run mark-run-top" id="btn-mark-refresh">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 15a9 9 0 0 0 2.13-9.36L1 10"/><path d="M20.49 9a9 9 0 0 0-2.13 9.36L23 14"/></svg>
+          Refresh Research
+        </button>
+      </div>
+
+      <!-- Status Bar -->
+      <div class="mark-status-bar">
+        <div class="mark-status-item">
+          <span class="mark-status-number">${totalSources}</span>
+          <span class="mark-status-label">Sources Found</span>
+        </div>
+        <div class="mark-status-item">
+          <span class="mark-status-number">${allMetrics.length}</span>
+          <span class="mark-status-label">Metrics Extracted</span>
+        </div>
+        <div class="mark-status-item">
+          <span class="mark-status-number">${marketData.competitivePositioning?.competitors?.length || 0}</span>
+          <span class="mark-status-label">Competitors</span>
+        </div>
+        <div class="mark-status-item">
+          <span class="mark-status-number">${marketData.kpiFramework?.length || 0}</span>
+          <span class="mark-status-label">KPIs</span>
+        </div>
+      </div>
+
+      <!-- Ticker Tape -->
+      ${allMetrics.length > 0 ? `
+      <div class="mark-ticker">
+        <div class="mark-ticker-track">
+          ${allMetrics.map(m => `
+            <span class="mark-ticker-item">
+              <span class="mark-ticker-value">${escapeHtml(m.value)}</span>
+              <span class="mark-ticker-label">${escapeHtml(m.label)}</span>
+            </span>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- Key Metrics Grid -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">📈 Key Metrics</h3>
+        <div class="mark-metrics-grid">
+          ${metricsHtml}
+        </div>
+      </div>
+
+      <!-- Market Sizing -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">📐 Market Sizing (TAM / SAM / SOM)</h3>
+        <div class="mark-sizing-grid">
+          <div class="mark-sizing-card">
+            <div class="mark-sizing-label">TAM</div>
+            <div class="mark-sizing-value">${marketData.marketSizing?.tam?.value || 'N/A'}</div>
+            <div class="mark-sizing-desc">${escapeHtml(marketData.marketSizing?.tam?.description || '')}</div>
+          </div>
+          <div class="mark-sizing-card">
+            <div class="mark-sizing-label">SAM</div>
+            <div class="mark-sizing-value">${marketData.marketSizing?.sam?.value || 'N/A'}</div>
+            <div class="mark-sizing-desc">${escapeHtml(marketData.marketSizing?.sam?.description || '')}</div>
+          </div>
+          <div class="mark-sizing-card">
+            <div class="mark-sizing-label">SOM</div>
+            <div class="mark-sizing-value">${marketData.marketSizing?.som?.value || 'N/A'}</div>
+            <div class="mark-sizing-desc">${escapeHtml(marketData.marketSizing?.som?.description || '')}</div>
+          </div>
+          <div class="mark-sizing-card mark-sizing-cagr">
+            <div class="mark-sizing-label">CAGR</div>
+            <div class="mark-sizing-value mark-cagr-value">${marketData.marketSizing?.growth_cagr || 'N/A'}</div>
+            <div class="mark-sizing-desc">Growth rate</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SWOT Analysis -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">🎯 SWOT Analysis</h3>
+        ${swotHtml}
+      </div>
+
+      <!-- Competitive Landscape -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">🏁 Competitive Landscape</h3>
+        <div class="mark-competitors-grid">
+          ${competitorHtml}
+        </div>
+      </div>
+
+      <!-- KPI Framework -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">📏 KPI Framework</h3>
+        <div class="mark-kpi-header">
+          <span>Category</span>
+          <span>Metric</span>
+          <span>Baseline</span>
+          <span>6M Target</span>
+          <span>12M Target</span>
+          <span>Freq</span>
+        </div>
+        <div class="mark-kpi-body">
+          ${kpiHtml}
+        </div>
+      </div>
+
+      <!-- Segmentation -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">👥 Target Segmentation</h3>
+        <div class="mark-segment-grid">
+          <div class="mark-segment-card">
+            <h4>${escapeHtml(marketData.targetMarketSegmentation?.primary?.name || 'Primary')}</h4>
+            <p class="mark-segment-desc">${escapeHtml(marketData.targetMarketSegmentation?.primary?.description || 'N/A')}</p>
+            <div class="mark-segment-detail"><strong>Demographics:</strong> ${escapeHtml(marketData.targetMarketSegmentation?.primary?.demographics || 'N/A')}</div>
+            <div class="mark-segment-detail"><strong>Psychographics:</strong> ${escapeHtml(marketData.targetMarketSegmentation?.primary?.psychographics || 'N/A')}</div>
+          </div>
+          <div class="mark-segment-card">
+            <h4>${escapeHtml(marketData.targetMarketSegmentation?.secondary?.name || 'Secondary')}</h4>
+            <p class="mark-segment-desc">${escapeHtml(marketData.targetMarketSegmentation?.secondary?.description || 'N/A')}</p>
+            <div class="mark-segment-detail"><strong>Demographics:</strong> ${escapeHtml(marketData.targetMarketSegmentation?.secondary?.demographics || 'N/A')}</div>
+            <div class="mark-segment-detail"><strong>Psychographics:</strong> ${escapeHtml(marketData.targetMarketSegmentation?.secondary?.psychographics || 'N/A')}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Source Quality -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">🔍 Source Quality</h3>
+        <div class="mark-quality-container">
+          ${sourceQualityHtml || '<p class="mark-no-data">No sources analyzed yet.</p>'}
+        </div>
+      </div>
+
+      <!-- Sources List -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">🔗 Data Sources (${totalSources})</h3>
+        <div class="mark-sources-list">
+          ${sourcesHtml}
+        </div>
+      </div>
+
+      <!-- Strategic Recommendations -->
+      <div class="mark-section">
+        <h3 class="mark-section-title">💡 Strategic Recommendations</h3>
+        <div class="mark-recommendations">
+          ${marketData.strategicRecommendations?.map(rec => `
+            <div class="mark-rec-card">
+              <div class="mark-rec-header">
+                <h4>${escapeHtml(rec.title)}</h4>
+                <span class="mark-rec-priority mark-priority-${(rec.priority || '').toLowerCase()}">${rec.priority}</span>
+              </div>
+              <div class="mark-rec-meta">
+                <span>Timeline: ${rec.timeline}</span>
+                <span>Investment: ${rec.investment}</span>
+                <span>ROI: ${rec.roi}</span>
+              </div>
+              <ul class="mark-rec-steps">
+                ${rec.steps?.map(step => `<li>${escapeHtml(step)}</li>`).join('')}
+              </ul>
+            </div>
+          `).join('') || '<p class="mark-no-data">No recommendations generated.</p>'}
+        </div>
+      </div>
+
+      <!-- Executive Summary -->
+      <div class="mark-section mark-section-executive">
+        <h3 class="mark-section-title">📋 Executive Summary</h3>
+        <div class="mark-executive-card">
+          <p>${marketData.executiveSummary || 'No executive summary generated.'}</p>
+        </div>
+        <div class="mark-industry-metrics">
+          ${(marketData.industryOverview?.metrics || []).map(m => `
+            <div class="mark-industry-metric">
+              <span class="mark-industry-metric-value">${escapeHtml(m.value)}</span>
+              <span class="mark-industry-metric-label">${escapeHtml(m.label)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Follow-up Chat -->
+      <div class="mark-section mark-section-chat">
+        <h3 class="mark-section-title">💬 Ask Mark (Follow-up Q&A)</h3>
+        <div class="mark-chat-messages" id="mark-chat-messages">
+          <div class="mark-chat-welcome">
+            <p>Ask Mark any follow-up questions about the market research data above.</p>
+            <p class="mark-chat-hint">e.g., "What's the main growth driver?", "Compare the top two competitors", "Explain the market sizing methodology"</p>
+          </div>
+        </div>
+        <div class="mark-chat-input">
+          <input type="text" id="mark-chat-input" placeholder="Ask Mark about the market research..." />
+          <button class="btn-mark-send" id="btn-mark-send">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Wire events
+  document.getElementById('btn-mark-refresh')?.addEventListener('click', () => {
+    state.markLoading = false;
+    runMarkResearch();
+  });
+
+  const sendBtn = document.getElementById('btn-mark-send');
+  const chatInput = document.getElementById('mark-chat-input') as HTMLInputElement;
+
+  const doSend = () => {
+    if (chatInput.value.trim()) {
+      handleMarkFollowUp(chatInput.value.trim());
+      chatInput.value = '';
+    }
+  };
+
+  sendBtn?.addEventListener('click', doSend);
+  chatInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doSend();
+  });
+}
+
+// ─── HELPER: Extract quantitative metrics from MarketData ────────────
+
+function extractQuantitativeMetrics(marketData: MarketData): Array<{ label: string; value: string }> {
+  const metrics: Array<{ label: string; value: string }> = [];
+
+  // From marketSizing
+  const ms = marketData.marketSizing;
+  if (ms?.tam?.value && ms.tam.value !== 'N/A') metrics.push({ label: 'Total Addressable Market', value: ms.tam.value });
+  if (ms?.sam?.value && ms.sam.value !== 'N/A') metrics.push({ label: 'Serviceable Addressable Market', value: ms.sam.value });
+  if (ms?.som?.value && ms.som.value !== 'N/A') metrics.push({ label: 'Serviceable Obtainable Market', value: ms.som.value });
+  if (ms?.growth_cagr && ms.growth_cagr !== 'N/A') metrics.push({ label: 'Growth Rate (CAGR)', value: ms.growth_cagr });
+
+  // From extractedMetrics
+  if (marketData.extractedMetrics?.length) {
+    metrics.push(...marketData.extractedMetrics.slice(0, 8));
+  }
+
+  // From industryOverview metrics
+  if (marketData.industryOverview?.metrics?.length) {
+    metrics.push(...marketData.industryOverview.metrics);
+  }
+
+  // From targetMarketSegmentation metrics
+  if (marketData.targetMarketSegmentation?.metrics?.length) {
+    metrics.push(...marketData.targetMarketSegmentation.metrics);
+  }
+
+  // From competitor market shares
+  marketData.competitivePositioning?.competitors?.forEach(c => {
+    if (c.market_share && c.market_share !== 'N/A') {
+      metrics.push({ label: `${c.archetype} Market Share`, value: c.market_share });
+    }
+  });
+
+  return metrics;
+}
+
+function buildSwotHtml(marketData: MarketData): string {
+  const buildSection = (title: string, items: Array<{factor: string; impact: string}>, color: string) => `
+    <div class="mark-swot-card">
+      <div class="mark-swot-title" style="background: ${color}">${title}</div>
+      <div class="mark-swot-list">
+        ${items.slice(0, 4).map(item => `
+          <div class="mark-swot-item">
+            <strong>${escapeHtml(item.factor)}</strong>
+            <span>${escapeHtml(item.impact)}</span>
+          </div>
+        `).join('')}
+        ${items.length === 0 ? '<p class="mark-no-data">No data available</p>' : ''}
+      </div>
+    </div>
+  `;
+
+  return `
+    <div class="mark-swot-grid">
+      ${buildSection('Strengths', marketData.swotAnalysis?.strengths || [], 'var(--accent-green)')}
+      ${buildSection('Weaknesses', marketData.swotAnalysis?.weaknesses || [], 'var(--accent-orange)')}
+      ${buildSection('Opportunities', marketData.swotAnalysis?.opportunities || [], 'var(--accent-amber)')}
+      ${buildSection('Threats', marketData.swotAnalysis?.threats || [], 'var(--accent-red)')}
+    </div>
+  `;
+}
+
+// This function is now defined at line 341, removing duplicate
+
+function formatMarkChatResponse(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^- (.*)/gm, '• $1');
+}
+
+function getCurrencyForCountry(country: string): string {
+  const map: Record<string, string> = {
+    'United States': 'USD', 'Australia': 'AUD', 'Canada': 'CAD',
+    'France': 'EUR', 'Germany': 'EUR', 'Ghana': 'GHS', 'India': 'INR',
+    'Indonesia': 'IDR', 'Ireland': 'EUR', 'Italy': 'EUR', 'Kenya': 'KES',
+    'Malaysia': 'MYR', 'Netherlands': 'EUR', 'New Zealand': 'NZD',
+    'Nigeria': 'NGN', 'Philippines': 'PHP', 'Portugal': 'EUR',
+    'Saudi Arabia': 'SAR', 'Singapore': 'SGD', 'South Africa': 'ZAR',
+    'Spain': 'EUR', 'Sweden': 'SEK', 'Switzerland': 'CHF',
+    'United Arab Emirates': 'AED', 'United Kingdom': 'GBP', 'Zimbabwe': 'ZWL',
+  };
+  return map[country] || 'USD';
+}
 
 // Reset
 btnReset.addEventListener('click', () => {

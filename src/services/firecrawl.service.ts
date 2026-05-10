@@ -174,7 +174,10 @@ async function firecrawlSearch(
   country: string,
   limit = 5
 ): Promise<FirecrawlSearchSource[]> {
-  if (!FIRECRAWL_API_KEY) return [];
+  if (!FIRECRAWL_API_KEY) {
+    console.warn('Firecrawl API key not configured');
+    return [];
+  }
 
   try {
     const isoCode = getIsoCode(country);
@@ -188,24 +191,36 @@ async function firecrawlSearch(
       body: JSON.stringify({
         query,
         limit,
+        country: isoCode,
+        location: country,
+        timeout: 60000,
+        ignoreInvalidURLs: true,
         scrapeOptions: {
           formats: ['markdown'],
           onlyMainContent: true,
-        },
-        searchOptions: {
-          country: isoCode,
-          location: country,
         },
       }),
     });
 
     if (!res.ok) {
-      console.warn(`Firecrawl search failed for "${query}":`, res.status);
+      const errBody = await res.text();
+      // Try to parse JSON error for better diagnostics
+      try {
+        const errJson = JSON.parse(errBody);
+        console.warn(`Firecrawl search failed for "${query}":`, res.status, errJson);
+      } catch {
+        console.warn(`Firecrawl search failed for "${query}":`, res.status, errBody.slice(0, 200));
+      }
       return [];
     }
 
-    const data = await res.json();
+const data = await res.json();
     const results = data?.data || [];
+
+    // Debug: log successful response structure
+    if (results.length > 0) {
+      console.debug('Firecrawl search result keys:', Object.keys(results[0]));
+    }
 
     return results
       .filter((r: any) => r?.markdown || r?.content)
