@@ -41,6 +41,7 @@ import { renderInterviewCard } from './components/InterviewCard';
 import type { SectionId } from './config/framework';
 import { renderScriptManager, setScriptManagerCallbacks } from './components/ScriptManager';
 import { renderMarkPanel } from './components/MarkPanel';
+import { renderMarketResearchDashboard } from './components/MarketResearchDashboard';
 import { exportBigDoc } from './services/export.service';
 import { createTranscript, syncTranscriptToSupabase, loadTranscriptsFromSupabase, getRecordingSessionCount, incrementRecordingSession, MAX_RECORDING_SESSIONS } from './services/transcription.service';
 
@@ -53,6 +54,10 @@ const btnReset = document.getElementById('btn-reset')!;
 const btnDownloadPdf = document.getElementById('btn-download-pdf') as HTMLButtonElement;
 const sectionNav = document.getElementById('section-nav')!;
 const brandscriptContent = document.getElementById('brandscript-content')!;
+const mainLayout = document.querySelector('.main-layout') as HTMLElement;
+const chatArea = document.getElementById('chat-container') as HTMLElement;
+const brandscriptPanel = document.getElementById('brandscript-panel') as HTMLElement;
+const marketResearchDashboardContainer = document.getElementById('market-research-container') as HTMLDivElement;
 const progressFill = document.getElementById('progress-fill')!;
 const progressPct = document.getElementById('progress-pct')!;
 
@@ -155,15 +160,31 @@ function setRightPanelView(view: 'brandscript' | 'context' | 'market'): void {
   navMarketResearch.classList.toggle('active', view === 'market');
 }
 
+function syncWorkspaceView(): void {
+  const dashboardActive = state.markViewVisible;
+
+  mainLayout?.classList.toggle('dashboard-mode', dashboardActive);
+  chatArea?.classList.toggle('hidden', dashboardActive);
+  brandscriptPanel?.classList.toggle('hidden', dashboardActive);
+  marketResearchDashboardContainer?.classList.toggle('hidden', !dashboardActive);
+
+  if (dashboardActive) {
+    setRightPanelView('brandscript');
+    if (marketResearchDashboardContainer) {
+      renderMarketResearchDashboard(marketResearchDashboardContainer);
+    }
+    return;
+  }
+
+  setRightPanelView(rightPanelView);
+}
+
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ REFRESH ALL UI Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
 function refreshUI(): void {
-  renderNav(sectionNav, progressFill, progressPct, () => refreshUI(), startInterviewFlow);
+  renderNav(sectionNav, progressFill, progressPct, () => refreshUI(), startInterviewFlow, () => syncWorkspaceView());
   renderBrandscript(brandscriptContent);
   renderMarketResearchPanel();
-  if (rightPanelView !== 'context') {
-    setRightPanelView(rightPanelView === 'market' ? 'market' : 'brandscript');
-  }
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ INTERVIEW FLOW Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -735,8 +756,8 @@ navContextSummary.addEventListener('click', () => {
 });
 
 navMarketResearch.addEventListener('click', () => {
+  state.markViewVisible = true;
   renderMarketResearchPanel();
-  setRightPanelView('market');
 });
 
 // ─── MARK: MARKET RESEARCH PANEL ──────────────────────────────────────
@@ -762,6 +783,9 @@ async function runMarkResearch(): Promise<void> {
   }
 
   state.markLoading = true;
+  state.marketResearch.loading = true;
+  state.marketResearch.error = null;
+  state.markViewVisible = true;
   renderMarketResearchPanel();
 
   try {
@@ -783,6 +807,12 @@ async function runMarkResearch(): Promise<void> {
     state.marketData = result.marketData;
     state.firecrawlResults = result.firecrawlResults;
     state.markLoading = false;
+    state.marketResearch.loading = false;
+    state.marketResearch.error = null;
+    state.marketResearch.data = result.marketData;
+    state.marketResearch.sourcesCount = result.firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0);
+    state.marketResearch.lastUpdated = new Date().toISOString();
+    state.marketResearch.firecrawlResults = result.firecrawlResults;
     saveSession();
     renderMarketResearchPanel();
 
@@ -798,11 +828,10 @@ async function runMarkResearch(): Promise<void> {
       logActivity(currentUserId, 'prompt', 'Market research generated', `${country} · ${industry}`);
     }
 
-    // Switch to Mark panel
-    setRightPanelView('market');
-
   } catch (err) {
     state.markLoading = false;
+    state.marketResearch.loading = false;
+    state.marketResearch.error = (err as Error).message || 'Failed to generate market research data';
     console.error('Mark research error:', err);
     renderMarketResearchPanel();
   } finally {
@@ -899,6 +928,12 @@ async function callGroqMarkFollowUp(question: string, marketContext: string): Pr
 }
 
 function renderMarketResearchPanel(): void {
+  syncWorkspaceView();
+
+  if (state.markViewVisible) {
+    return;
+  }
+
   if (markResearchRunning) {
     // Show loading state handled by MarkPanel
   }

@@ -1,12 +1,14 @@
 // ─── MARKET DASHBOARD SERVICE ────────────────────────────────────────
 // Service for fetching and managing market research data for dashboard display
 
-import { generateMarketData, type GenerateMarketDataParams } from './market.service';
+import { generateMarketData, type GenerateMarketDataParams, type MarketData } from './market.service';
+import type { FirecrawlMarketResult } from './firecrawl.service';
 
 export interface MarketResearchDisplayData {
   data: any;
   sourcesCount: number;
   lastUpdated: string;
+  firecrawlResults: FirecrawlMarketResult[];
 }
 
 /**
@@ -35,7 +37,8 @@ export async function fetchMarketResearchForDisplay(
     return {
       data: result.marketData,
       sourcesCount: result.firecrawlResults.reduce((sum, r) => sum + r.sources.length, 0),
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      firecrawlResults: result.firecrawlResults,
     };
   } catch (error) {
     console.error('Error fetching market research for dashboard:', error);
@@ -46,11 +49,13 @@ export async function fetchMarketResearchForDisplay(
 /**
  * Check if we have valid market research data in state
  */
-export function hasValidMarketResearch(data: any): boolean {
-  return data && 
-         data.executiveSummary && 
-         data.industryOverview && 
-         data.marketSizing;
+export function hasValidMarketResearch(data: any): data is MarketData {
+  return Boolean(
+    data &&
+    data.executiveSummary &&
+    data.industryOverview &&
+    data.marketSizing
+  );
 }
 
 /**

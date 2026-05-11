@@ -3,7 +3,6 @@
 
 import { state, saveSession } from '../store/brandscript.store';
 import { fetchMarketResearchForDisplay, formatMarketDataForCharts, hasValidMarketResearch } from '../services/market-dashboard.service';
-import Chart from 'chart.js/auto';
 
 export function renderMarketResearchDashboard(container: HTMLElement): void {
   const mr = state.marketResearch;
@@ -147,7 +146,7 @@ export function renderMarketResearchDashboard(container: HTMLElement): void {
   }
 
   // Main dashboard content
-  const data = mr.data;
+  const data = mr.data!;
   const chartData = formatMarketDataForCharts(data);
 
   container.innerHTML = `
@@ -393,58 +392,70 @@ export function renderMarketResearchDashboard(container: HTMLElement): void {
 }
 
 function initializeCharts(chartData: any) {
-  // Market Sizing Funnel Chart
-  const sizingCanvas = document.getElementById('market-sizing-chart') as HTMLCanvasElement;
-  if (sizingCanvas && chartData?.marketSizing) {
-    const ctx = sizingCanvas.getContext('2d');
-    if (ctx) {
-      const marketSizing = chartData.marketSizing;
-      const tam = marketSizing.tam ? parseFloat(marketSizing.tam.replace(/[^0-9.-]/g, '')) || 0 : 0;
-      const sam = marketSizing.sam ? parseFloat(marketSizing.sam.replace(/[^0-9.-]/g, '')) || 0 : 0;
-      const som = marketSizing.som ? parseFloat(marketSizing.som.replace(/[^0-9.-]/g, '')) || 0 : 0;
+  const sizingCanvas = document.getElementById('market-sizing-chart') as HTMLCanvasElement | null;
+  if (!sizingCanvas || !chartData?.marketSizing) return;
 
-      new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: ['TAM', 'SAM', 'SOM'],
-          datasets: [{
-            label: 'Market Size',
-            data: [tam, sam, som],
-            backgroundColor: [
-              'rgba(54, 162, 235, 0.8)',
-              'rgba(255, 206, 86, 0.8)',
-              'rgba(75, 192, 192, 0.8)'
-            ],
-            borderColor: [
-              'rgba(54, 162, 235, 1)',
-              'rgba(255, 206, 86, 1)',
-              'rgba(75, 192, 192, 1)'
-            ],
-            borderWidth: 1
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: {
-              beginAtZero: true,
-              ticks: {
-                callback: function (value) {
-                  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-                }
-              }
-            }
-          },
-          plugins: {
-            legend: {
-              display: false
-            }
-          }
-        }
-      });
-    }
-  }
+  const ctx = sizingCanvas.getContext('2d');
+  if (!ctx) return;
+
+  const rawValues = [chartData.marketSizing.tam, chartData.marketSizing.sam, chartData.marketSizing.som];
+  const labels = ['TAM', 'SAM', 'SOM'];
+  const values = rawValues.map((value: string) => parseFloat(String(value).replace(/[^0-9.-]/g, '')) || 0);
+  const width = sizingCanvas.width;
+  const height = sizingCanvas.height;
+  const padding = 18;
+  const chartHeight = height - padding * 2 - 24;
+  const chartWidth = width - padding * 2;
+  const gap = 18;
+  const barWidth = (chartWidth - gap * 2) / 3;
+  const maxValue = Math.max(...values, 1);
+
+  ctx.clearRect(0, 0, width, height);
+
+  const background = ctx.createLinearGradient(0, 0, 0, height);
+  background.addColorStop(0, 'rgba(255, 255, 255, 0.03)');
+  background.addColorStop(1, 'rgba(255, 255, 255, 0.01)');
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, width, height);
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, height - padding - 16);
+  ctx.lineTo(width - padding, height - padding - 16);
+  ctx.stroke();
+
+  values.forEach((value, index) => {
+    const x = padding + index * (barWidth + gap);
+    const barHeight = Math.max((value / maxValue) * chartHeight, 8);
+    const y = height - padding - 16 - barHeight;
+    const barGradient = ctx.createLinearGradient(0, y, 0, y + barHeight);
+    barGradient.addColorStop(0, index === 0 ? '#FF8C61' : index === 1 ? '#F7C948' : '#7C6BFF');
+    barGradient.addColorStop(1, index === 0 ? '#FF6B35' : index === 1 ? '#D9A81E' : '#4ECDC4');
+
+    ctx.fillStyle = barGradient;
+    roundRect(ctx, x, y, barWidth, barHeight, 14);
+    ctx.fill();
+
+    ctx.fillStyle = '#f0f0f5';
+    ctx.font = '600 13px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[index], x + barWidth / 2, height - padding);
+
+    ctx.font = '700 14px Inter, sans-serif';
+    ctx.fillText(rawValues[index], x + barWidth / 2, Math.max(y - 10, 18));
+  });
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number): void {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
 }
 
 function attachEventListeners() {
@@ -512,8 +523,12 @@ function attachEventListeners() {
         state.marketResearch.data = result.data;
         state.marketResearch.sourcesCount = result.sourcesCount;
         state.marketResearch.lastUpdated = result.lastUpdated;
+        state.marketResearch.firecrawlResults = result.firecrawlResults;
+        state.marketData = result.data;
+        state.firecrawlResults = result.firecrawlResults;
         state.marketResearch.loading = false;
         state.marketResearch.error = null;
+        state.markLoading = false;
 
         saveSession();
 
@@ -594,12 +609,17 @@ function attachEventListeners() {
         state.marketResearch.data = result.data;
         state.marketResearch.sourcesCount = result.sourcesCount;
         state.marketResearch.lastUpdated = result.lastUpdated;
+        state.marketResearch.firecrawlResults = result.firecrawlResults;
+        state.marketData = result.data;
+        state.firecrawlResults = result.firecrawlResults;
         state.marketResearch.loading = false;
         state.marketResearch.error = null;
+        state.markLoading = false;
 
       } catch (error) {
         state.marketResearch.loading = false;
         state.marketResearch.error = (error as Error).message || 'Failed to fetch market research data';
+        state.markLoading = false;
       }
 
       saveSession();

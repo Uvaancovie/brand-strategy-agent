@@ -16,7 +16,9 @@ export function renderNav(
     const filled  = getFilledCount(section.id);
     const total   = section.fields.length;
     const allDone = filled === total;          // auto-complete when every field has a value
-    const active  = i === state.activeSection && state.currentView === 'chat';
+    
+    // FIX: Replaced state.currentView === 'chat' with !state.markViewVisible
+    const active  = i === state.activeSection && !state.markViewVisible;
 
     // Badge label: show fraction, colour it green when fully done
     const badgeClass = allDone ? 'nav-badge done' : 'nav-badge';
@@ -47,13 +49,17 @@ export function renderNav(
     </div>`;
   }).join('');
 
+  // FIX: Replaced marketResearch.sourcesCount with firecrawlResults.length
+  const sourcesCount = state.firecrawlResults ? state.firecrawlResults.length : 0;
+
   // Market Research Dashboard item
+  // FIX: Replaced state.currentView === 'dashboard' with state.markViewVisible
   const marketResearchItem = `
-    <div class="nav-item ${state.currentView === 'dashboard' ? 'active' : ''}" data-view="dashboard" style="color: #8b5cf6" title="View market research dashboard">
+    <div class="nav-item ${state.markViewVisible ? 'active' : ''}" data-view="dashboard" style="color: #8b5cf6" title="View market research dashboard">
       <div class="nav-dot"></div>
       <span class="nav-label">📊 Market Research</span>
       <div class="nav-right">
-        <span class="nav-badge">${state.marketResearch.sourcesCount || 0}</span>
+        <span class="nav-badge">${sourcesCount}</span>
       </div>
     </div>
   `;
@@ -69,15 +75,15 @@ export function renderNav(
       const idx = parseInt((item as HTMLElement).dataset.index || '0');
 
       if (view === 'dashboard') {
-        // Switch to dashboard view
-        state.currentView = 'dashboard';
+        // FIX: Update markViewVisible instead of currentView
+        state.markViewVisible = true;
         renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick, onViewChange);
         if (onViewChange) onViewChange('dashboard');
         return;
       }
 
-      // Switch to chat view and activate section
-      state.currentView = 'chat';
+      // FIX: Update markViewVisible instead of currentView
+      state.markViewVisible = false;
       state.activeSection = idx;
       renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick, onViewChange);
       if (onSectionClick) onSectionClick(idx);

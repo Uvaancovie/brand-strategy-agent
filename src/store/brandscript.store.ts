@@ -40,6 +40,15 @@ export interface Transcript {
   updatedAt: string;
 }
 
+export interface MarketResearchState {
+  loading: boolean;
+  error: string | null;
+  data: MarketData | null;
+  sourcesCount: number;
+  lastUpdated: string | null;
+  firecrawlResults: FirecrawlMarketResult[];
+}
+
 export interface AppState {
   activeSection: number;
   messages: ChatMessage[];
@@ -52,7 +61,8 @@ export interface AppState {
   contextPanels: ContextPanel[];
   transcripts: Transcript[];
   recordingSessionCount: number;
-  // Mark: Market Research Agent state
+  marketResearch: MarketResearchState;
+  // Mark: Market Research Agent state (legacy panel compatibility)
   marketData: MarketData | null;
   firecrawlResults: FirecrawlMarketResult[];
   markLoading: boolean;
@@ -87,6 +97,14 @@ export const state: AppState = {
   contextPanels: [],
   transcripts: [],
   recordingSessionCount: 0,
+  marketResearch: {
+    loading: false,
+    error: null,
+    data: null,
+    sourcesCount: 0,
+    lastUpdated: null,
+    firecrawlResults: [],
+  },
   // Mark: Market Research Agent state
   marketData: null,
   firecrawlResults: [],
@@ -109,9 +127,12 @@ export function saveSession(): void {
       contextPanels: state.contextPanels,
       transcripts: state.transcripts,
       recordingSessionCount: state.recordingSessionCount,
+      marketResearch: state.marketResearch,
       // Mark: Market Research Agent
       marketData: state.marketData,
       firecrawlResults: state.firecrawlResults,
+      markLoading: state.markLoading,
+      markViewVisible: state.markViewVisible,
       savedAt: new Date().toISOString(),
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -212,9 +233,30 @@ export function loadSession(): boolean {
     if (data.contextPanels) state.contextPanels = data.contextPanels;
     if (data.transcripts) state.transcripts = data.transcripts;
     if (data.recordingSessionCount !== undefined) state.recordingSessionCount = data.recordingSessionCount;
+    if (data.marketResearch) {
+      state.marketResearch = {
+        ...state.marketResearch,
+        ...data.marketResearch,
+        firecrawlResults: data.marketResearch.firecrawlResults || [],
+      };
+    } else {
+      state.marketResearch = {
+        loading: !!data.markLoading,
+        error: null,
+        data: data.marketData || null,
+        sourcesCount: Array.isArray(data.firecrawlResults) ? data.firecrawlResults.length : 0,
+        lastUpdated: null,
+        firecrawlResults: data.firecrawlResults || [],
+      };
+    }
     // Mark: Market Research Agent - restore persisted research
     if (data.marketData) state.marketData = data.marketData;
     if (data.firecrawlResults) state.firecrawlResults = data.firecrawlResults;
+    if (data.markLoading !== undefined) state.markLoading = data.markLoading;
+    if (data.markViewVisible !== undefined) state.markViewVisible = data.markViewVisible;
+    if (state.marketResearch.data) state.marketData = state.marketResearch.data;
+    if (state.marketResearch.firecrawlResults.length) state.firecrawlResults = state.marketResearch.firecrawlResults;
+    state.markLoading = state.marketResearch.loading;
     return true;
   } catch (e) {
     console.warn('Session load failed:', e);
@@ -234,6 +276,14 @@ export function clearSession(): void {
   state.contextPanels = [];
   state.transcripts = [];
   state.recordingSessionCount = 0;
+  state.marketResearch = {
+    loading: false,
+    error: null,
+    data: null,
+    sourcesCount: 0,
+    lastUpdated: null,
+    firecrawlResults: [],
+  };
   // Mark: Market Research Agent
   state.marketData = null;
   state.firecrawlResults = [];
