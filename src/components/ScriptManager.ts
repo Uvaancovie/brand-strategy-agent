@@ -48,6 +48,7 @@ function truncate(text: string, max = 120): string {
 // ─── RENDER SCRIPTS LIST ────────────────────────────────────────────
 
 export function renderScriptManager(container: HTMLElement): void {
+  console.log('renderScriptManager called');
   const transcripts = getAllTranscripts();
   const recordingCount = state.recordingSessionCount;
 
@@ -117,6 +118,8 @@ export function renderScriptManager(container: HTMLElement): void {
       ${activeScriptId ? renderScriptDetail(activeScriptId) : ''}
     </div>
   `;
+
+  console.log('DOM rendered, looking for #script-action-save:', container.querySelector('#script-action-save') ? 'FOUND' : 'NOT FOUND');
 
   // Bind card clicks
   container.querySelectorAll('.script-card').forEach(card => {
@@ -199,6 +202,8 @@ function showStatus(container: HTMLElement, msg: string, isError = false) {
 }
 
 function bindDetailActions(container: HTMLElement) {
+  console.log('Binding detail actions, looking for #script-action-save:', container.querySelector('#script-action-save') ? 'FOUND' : 'NOT FOUND');
+
   // Back button
   container.querySelector('#script-back-btn')?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -207,17 +212,57 @@ function bindDetailActions(container: HTMLElement) {
   });
 
   // Save
-  container.querySelector('#script-action-save')?.addEventListener('click', async () => {
-    if (!activeScriptId) return;
-    const name = (container.querySelector('#script-edit-name') as HTMLInputElement)?.value?.trim();
-    const desc = (container.querySelector('#script-edit-desc') as HTMLTextAreaElement)?.value?.trim();
-    const text = (container.querySelector('#script-edit-text') as HTMLTextAreaElement)?.value?.trim();
-    const result = updateTranscript(activeScriptId, { name, description: desc, text });
-    if (result && userId) {
-      syncTranscriptToSupabase(userId, result);
+  container.querySelector('#script-action-save')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('Save button clicked, activeScriptId:', activeScriptId);
+
+    try {
+      if (!activeScriptId) {
+        console.warn('No activeScriptId set');
+        showStatus(container, '❌ No transcript selected.', true);
+        return;
+      }
+
+      const nameEl = container.querySelector('#script-edit-name') as HTMLInputElement;
+      const descEl = container.querySelector('#script-edit-desc') as HTMLTextAreaElement;
+      const textEl = container.querySelector('#script-edit-text') as HTMLTextAreaElement;
+
+      if (!nameEl || !descEl || !textEl) {
+        console.error('Form elements not found');
+        showStatus(container, '❌ Form elements not found.', true);
+        return;
+      }
+
+      const name = nameEl.value?.trim() || '';
+      const desc = descEl.value?.trim() || '';
+      const text = textEl.value?.trim() || '';
+
+      console.log('Form values:', { nameLen: name.length, descLen: desc.length, textLen: text.length });
+
+      if (!name || !text) {
+        showStatus(container, '❌ Name and transcript text are required.', true);
+        return;
+      }
+
+      const result = updateTranscript(activeScriptId, { name, description: desc, text });
+      console.log('updateTranscript result:', result?.id);
+
+      if (!result) {
+        showStatus(container, '❌ Save failed - transcript not found.', true);
+        return;
+      }
+
+      if (userId) {
+        console.log('Syncing to Supabase for user:', userId);
+        await syncTranscriptToSupabase(userId, result);
+      }
+      showStatus(container, '✅ Saved!');
+      if (onRefreshUI) onRefreshUI();
+    } catch (err) {
+      console.error('Error in save handler:', err);
+      showStatus(container, '❌ ' + (err as Error).message, true);
     }
-    showStatus(container, result ? '✅ Saved!' : '❌ Save failed.');
-    if (onRefreshUI) onRefreshUI();
   });
 
   // Context

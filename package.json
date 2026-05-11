@@ -19,6 +19,7 @@
     "@supabase/supabase-js": "^2.101.1",
     "@types/html2pdf.js": "^0.10.0",
     "@vercel/analytics": "^2.0.1",
+    "chart.js": "^4.5.1",
     "groq-sdk": "^1.1.2",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",

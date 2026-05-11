@@ -9,13 +9,14 @@ export function renderNav(
   progressFill: HTMLElement,
   progressPct: HTMLElement,
   onUpdate?: () => void,
-  onSectionClick?: (sectionIndex: number) => void
+  onSectionClick?: (sectionIndex: number) => void,
+  onViewChange?: (view: 'chat' | 'dashboard') => void
 ): void {
-  navContainer.innerHTML = FRAMEWORK.map((section, i) => {
+  const frameworkItems = FRAMEWORK.map((section, i) => {
     const filled  = getFilledCount(section.id);
     const total   = section.fields.length;
     const allDone = filled === total;          // auto-complete when every field has a value
-    const active  = i === state.activeSection;
+    const active  = i === state.activeSection && state.currentView === 'chat';
 
     // Badge label: show fraction, colour it green when fully done
     const badgeClass = allDone ? 'nav-badge done' : 'nav-badge';
@@ -31,7 +32,7 @@ export function renderNav(
 
     return `
     <div class="nav-item ${active ? 'active' : ''} ${allDone ? 'completed' : ''}"
-         data-index="${i}" style="color: ${section.color}" title="${allDone ? 'All done — click to edit' : 'Click to fill in'}">
+         data-index="${i}" data-view="chat" style="color: ${section.color}" title="${allDone ? 'All done — click to edit' : 'Click to fill in'}">
       <div class="nav-dot ${allDone ? 'done' : ''}"></div>
       <span class="nav-label">${section.icon} ${section.label}</span>
       <div class="nav-right">
@@ -46,14 +47,41 @@ export function renderNav(
     </div>`;
   }).join('');
 
+  // Market Research Dashboard item
+  const marketResearchItem = `
+    <div class="nav-item ${state.currentView === 'dashboard' ? 'active' : ''}" data-view="dashboard" style="color: #8b5cf6" title="View market research dashboard">
+      <div class="nav-dot"></div>
+      <span class="nav-label">📊 Market Research</span>
+      <div class="nav-right">
+        <span class="nav-badge">${state.marketResearch.sourcesCount || 0}</span>
+      </div>
+    </div>
+  `;
+
+  navContainer.innerHTML = frameworkItems + marketResearchItem;
+
   // Section click → open interview card (new or edit mode)
   navContainer.querySelectorAll('.nav-item').forEach(item => {
     (item as HTMLElement).addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.nav-check-btn')) return;
+
+      const view = (item as HTMLElement).dataset.view as 'chat' | 'dashboard';
       const idx = parseInt((item as HTMLElement).dataset.index || '0');
+
+      if (view === 'dashboard') {
+        // Switch to dashboard view
+        state.currentView = 'dashboard';
+        renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick, onViewChange);
+        if (onViewChange) onViewChange('dashboard');
+        return;
+      }
+
+      // Switch to chat view and activate section
+      state.currentView = 'chat';
       state.activeSection = idx;
-      renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick);
+      renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick, onViewChange);
       if (onSectionClick) onSectionClick(idx);
+      if (onViewChange) onViewChange('chat');
     });
   });
 
@@ -73,7 +101,7 @@ export function renderNav(
         return;
       }
       state.manualSectionCompletion[sectionId] = !state.manualSectionCompletion[sectionId];
-      renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick);
+      renderNav(navContainer, progressFill, progressPct, onUpdate, onSectionClick, onViewChange);
       saveSession();
     });
   });
