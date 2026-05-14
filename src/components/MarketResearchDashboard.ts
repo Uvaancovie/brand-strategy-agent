@@ -323,6 +323,18 @@ export function renderMarketResearchDashboard(container: HTMLElement): void {
               <div class="mr-rec-detail"><strong>Investment:</strong> ${rec.investment}</div>
               <div class="mr-rec-detail"><strong>ROI:</strong> ${rec.roi}</div>
             </div>
+            
+            ${rec.targetPersona ? `
+            <div class="mr-rec-persona" style="background: var(--surface-2); padding: 12px; border-radius: 6px; margin: 15px 0;">
+              <div style="font-weight: bold; margin-bottom: 5px;">🎯 Target Persona: ${rec.targetPersona.name}</div>
+              <div style="font-size: 0.9em; color: var(--text-2);">
+                <div><strong>Role:</strong> ${rec.targetPersona.role}</div>
+                <div><strong>Pain Point:</strong> ${rec.targetPersona.painPoint}</div>
+                <div><strong>Motivation:</strong> ${rec.targetPersona.motivation}</div>
+              </div>
+            </div>
+            ` : ''}
+
             <div class="mr-rec-steps">
               <strong>Steps:</strong>
               <ol>
