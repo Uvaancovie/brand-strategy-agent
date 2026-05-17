@@ -57,6 +57,12 @@ export interface MarketData {
     investment: string;
     roi: string;
     priority: string;
+    targetPersona?: {
+      name: string;
+      role: string;
+      painPoint: string;
+      motivation: string;
+    };
     steps: string[];
   }[];
   kpiFramework: {
@@ -186,6 +192,12 @@ function buildFallbackMarketData(country: string, industry: string): MarketData 
         investment: 'Low',
         roi: 'High',
         priority: 'High',
+        targetPersona: {
+          name: 'Decision-Maker Dave',
+          role: 'VP of Operations / Director',
+          painPoint: 'Struggles with inefficient legacy workflows',
+          motivation: 'Seeking scalable, automated solutions'
+        },
         steps: ['Refresh the AI generation step', 'Validate sourced market numbers', 'Regenerate the PDF'],
       },
     ],
@@ -359,6 +371,12 @@ Respond ONLY with perfectly valid JSON matching this exact structure layout. Do 
       "investment": "${currency} XXX,XXX",
       "roi": "Medium-Term Brand Equity & Lead Generation",
       "priority": "High",
+      "targetPersona": {
+        "name": "Decision-Maker Dave",
+        "role": "VP of Operations / Director",
+        "painPoint": "Struggles with inefficient legacy workflows",
+        "motivation": "Seeking scalable, automated solutions"
+      },
       "steps": ["Publish 2-3 industry whitepapers with original data", "Speak at 2-3 major ${industry} conferences in ${country}", "Launch a bi-weekly expert content series (podcast/blog)"]
     },
     {
@@ -455,7 +473,7 @@ Return only valid JSON. Keep every narrative under 80 words. Use N/A where sourc
   "targetMarketSegmentation": { "primary": { "name": "...", "description": "...", "demographics": "...", "psychographics": "..." }, "secondary": { "name": "...", "description": "...", "demographics": "...", "psychographics": "..." }, "metrics": [{ "label": "CAC", "value": "..." }, { "label": "CLV", "value": "..." }] },
   "competitivePositioning": { "competitors": [{ "archetype": "...", "market_share": "...", "price_tier": "...", "strength": "...", "weakness": "..." }], "narrative": "short competitive read" },
   "swotAnalysis": { "strengths": [{ "factor": "...", "impact": "..." }], "weaknesses": [{ "factor": "...", "impact": "..." }], "opportunities": [{ "factor": "...", "impact": "..." }], "threats": [{ "factor": "...", "impact": "..." }] },
-  "strategicRecommendations": [{ "title": "...", "timeline": "...", "investment": "...", "roi": "...", "priority": "High", "steps": ["...", "...", "..."] }],
+  "strategicRecommendations": [{ "title": "...", "timeline": "...", "investment": "...", "roi": "...", "priority": "High", "targetPersona": { "name": "...", "role": "...", "painPoint": "...", "motivation": "..." }, "steps": ["...", "...", "..."] }],
   "kpiFramework": [{ "category": "Growth", "metric": "...", "baseline": "...", "target_6m": "...", "target_12m": "...", "frequency": "Monthly" }]
 }`;
 }
