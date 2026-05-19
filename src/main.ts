@@ -27,6 +27,7 @@ import type { FirecrawlMarketResult } from './services/firecrawl.service';
 import { saveBrandscriptToSupabase } from './services/brandscript.service';
 import { saveMarketResearch, saveDocumentExport } from './services/brandscript.service';
 import { generateHtmlDoc } from './services/html-export.service';
+import { generateBigDocPdf } from './services/pdf.service';
 import html2pdf from 'html2pdf.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -1537,47 +1538,32 @@ btnDownloadPdf.addEventListener('click', async () => {
 
     // Phase 2: Building the report
     processingTitle.textContent = 'Building Your Report';
-    addProcessingStep(`${sourceCount} web sources collected Ã¢â‚¬â€ assembling B.I.G Doc...`, 70);
-    updateProgress(70, 'Generating HTML report with market intelligence...');
+    addProcessingStep(`${sourceCount} web sources collected — assembling B.I.G Doc...`, 70);
+    updateProgress(70, 'Compiling PDF document with market intelligence...');
 
     await new Promise(r => setTimeout(r, 500));
 
-    // 2. Generate and download the HTML
-    addProcessingStep('Rendering B.I.G Doc with brand strategy + market data...', 75);
-    updateProgress(75);
-    const htmlReport = generateHtmlDoc({
+    // 2. Generate PDF with live progress tracking
+    const bName = state.brandscript.name?.purpose?.split('.')[0]?.trim() || 'Your Brand';
+    const safe = bName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-');
+    const fileName = `BIG-Doc-${safe}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+    await generateBigDocPdf({
       brandscript: state.brandscript,
       contextPayload: state.contextPayload,
       marketData,
+      brandName: bName,
+      onProgress: (step, pct) => {
+        // Map PDF progress (0-100) to overall progress (70-88)
+        const totalPct = Math.round(70 + pct * 0.18);
+        updateProgress(totalPct, step);
+        addProcessingStep(step, totalPct);
+      },
     });
-    
-    // Create Blob and trigger download
-    addProcessingStep('Preparing download file...', 82);
-    updateProgress(82);
-    
-    // Add subtitle for user visibility on this heavy operation
-    processingSubtitle.textContent = 'Compiling PDF document. This may take up to 20 seconds depending on the file size...';
-    // Yield to the event loop so the UI updates
-    await new Promise(r => setTimeout(r, 100));
-    
-    const now = new Date();
-    const formattedDate = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
-    const bName = state.brandscript.name?.purpose?.split('.')[0]?.trim() || 'Your Brand';
-    const safeName = bName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+$/g, '');
-    const fileName = `BIG-Doc-${safeName}-${formattedDate}.pdf`;
-    
-    const opt = {
-      margin:       0,
-      filename:     fileName,
-      image:        { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true },
-      jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' } as any
-    };
 
-    await html2pdf().set(opt).from(htmlReport).save();
-
-    addProcessingStep('File downloaded successfully ✔', 88);
+    addProcessingStep('PDF downloaded successfully \u2714', 88);
     updateProgress(88);
+
 
     // 3. Save to Supabase (market research + document export)
     if (currentUserId) {

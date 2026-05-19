@@ -1,6 +1,6 @@
 // ─── PDF GENERATION SERVICE ─────────────────────────────────────────
 // Builds a professionally styled B.I.G Doc PDF using jsPDF.
-// Black & Orange brand palette. Continuous layout — no blank pages.
+// Minimalist Black & White palette. Continuous layout — no blank pages.
 // Embeds full BIG Framework reference material alongside user answers.
 
 import jsPDF from 'jspdf';
@@ -8,18 +8,18 @@ import autoTable from 'jspdf-autotable';
 import { FRAMEWORK, type BrandScript } from '../config/framework';
 import type { MarketData } from './market.service';
 
-// ─── COLOUR PALETTE (Premium Brand Palette) ───────────────────────────
+// ─── COLOUR PALETTE (Minimalist Black & White) ────────────────────────
 const C = {
-  primary:     [10, 10, 15] as [number, number, number],    // Deep Charcoal
-  accent:      [255, 107, 53] as [number, number, number],   // Volcanic Orange
-  accentAmber: [247, 201, 72] as [number, number, number],   // Gold/Amber
+  primary:     [0, 0, 0] as [number, number, number],       // Pure Black
+  accent:      [0, 0, 0] as [number, number, number],       // Black (no color)
+  accentAmber: [0, 0, 0] as [number, number, number],       // Black (no color)
   white:       [255, 255, 255] as [number, number, number],  // Pure White
   pageBg:      [255, 255, 255] as [number, number, number],  // White Background
-  tableBg:     [248, 248, 250] as [number, number, number],  // Subtle Gray
-  border:      [220, 220, 230] as [number, number, number],  // Soft Borders
-  textMain:    [15, 15, 20] as [number, number, number],     // Strong Body
-  textLight:   [60, 60, 75] as [number, number, number],     // Subtitles
-  textMuted:   [120, 120, 135] as [number, number, number],  // Metadata
+  tableBg:     [250, 250, 250] as [number, number, number],  // Near-White
+  border:      [200, 200, 200] as [number, number, number],  // Light Gray Borders
+  textMain:    [0, 0, 0] as [number, number, number],       // Pure Black
+  textLight:   [80, 80, 80] as [number, number, number],    // Medium Gray
+  textMuted:   [140, 140, 140] as [number, number, number],  // Light Gray
 };
 
 const PAGE_W = 210;
@@ -118,19 +118,19 @@ function safeY(doc: jsPDF, y: number, needed: number): number {
 function sectionTitle(doc: jsPDF, y: number, title: string, icon?: string): number {
   y = safeY(doc, y, 25);
   
-  // Left accent bar
-  doc.setFillColor(...C.accent);
-  doc.rect(MARGIN, y - 5, 1.5, 10, 'F');
+  // Thin black left rule
+  doc.setFillColor(0, 0, 0);
+  doc.rect(MARGIN, y - 5, 0.8, 10, 'F');
   
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.setTextColor(...C.primary);
+  doc.setFontSize(16);
+  doc.setTextColor(0, 0, 0);
   const label = icon ? `${icon}  ${title}` : title;
-  doc.text(label, MARGIN + 6, y + 2.5);
+  doc.text(label, MARGIN + 5, y + 2.5);
   
   y += 10;
-  doc.setDrawColor(...C.border);
-  doc.setLineWidth(0.2);
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.15);
   doc.line(MARGIN, y, MARGIN + CONTENT_W, y);
   
   return y + 10;
@@ -139,8 +139,8 @@ function sectionTitle(doc: jsPDF, y: number, title: string, icon?: string): numb
 function subHeading(doc: jsPDF, y: number, title: string): number {
   y = safeY(doc, y, 14);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(...C.accent);
+  doc.setFontSize(10);
+  doc.setTextColor(0, 0, 0);
   doc.text(title.toUpperCase(), MARGIN, y);
   return y + 6;
 }
@@ -172,18 +172,18 @@ function bodyText(doc: jsPDF, text: string, y: number, opts?: { muted?: boolean;
 
 function addFooter(doc: jsPDF, pageNum: number, totalPages: number): void {
   const y = PAGE_H - 12;
-  doc.setDrawColor(...C.border);
-  doc.setLineWidth(0.2);
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.15);
   doc.line(MARGIN, y - 5, PAGE_W - MARGIN, y - 5);
   
-  doc.setFontSize(8);
-  doc.setTextColor(...C.textMuted);
+  doc.setFontSize(7);
+  doc.setTextColor(140, 140, 140);
   doc.setFont('helvetica', 'normal');
   doc.text('BIG Framework Strategic Document', MARGIN, y);
   doc.text(`Page ${pageNum} of ${totalPages}`, PAGE_W - MARGIN, y, { align: 'right' });
   
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(...C.primary);
+  doc.setTextColor(0, 0, 0);
   doc.text('VOLCANIC MARKETING', PAGE_W / 2, y, { align: 'center' });
 }
 
@@ -193,50 +193,39 @@ function drawCover(doc: jsPDF, brandName: string, tagline: string, date: string)
   drawBg(doc);
   const cx = PAGE_W / 2;
 
-  // ── Top Brand Header ──
-  doc.setFillColor(...C.primary);
-  doc.rect(0, 0, PAGE_W, 60, 'F');
-  
-  // Decorative line
-  doc.setFillColor(...C.accent);
-  doc.rect(0, 58, PAGE_W, 2, 'F');
+  // ── Thin top rule ──
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.5);
+  doc.line(MARGIN, 30, PAGE_W - MARGIN, 30);
 
-  // Logo Text in White on Dark BG
+  // Logo Text — simple black
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(...C.white);
-  doc.text('V O L C A N I C   M A R K E T I N G', cx, 30, { align: 'center' });
-  doc.setFont('times', 'italic');
-  doc.setFontSize(9);
-  doc.setTextColor(...C.accentAmber);
-  doc.text('extraordinary by design', cx, 36, { align: 'center' });
+  doc.setFontSize(8);
+  doc.setTextColor(0, 0, 0);
+  doc.text('V O L C A N I C   M A R K E T I N G', cx, 26, { align: 'center' });
 
   // ── Main Content Area ──
-  const midY = 110;
+  const midY = 120;
   
-  // Large Title
+  // Large Title — pure black
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(42);
-  doc.setTextColor(...C.primary);
+  doc.setFontSize(48);
+  doc.setTextColor(0, 0, 0);
   doc.text('BRAND', cx, midY, { align: 'center' });
-  doc.text('STRATEGY', cx, midY + 16, { align: 'center' });
+  doc.text('STRATEGY', cx, midY + 20, { align: 'center' });
   
-  // Brand Name Subtitle
+  // Thin separator
+  doc.setLineWidth(0.3);
+  doc.line(cx - 30, midY + 28, cx + 30, midY + 28);
+
+  // Brand Name
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(18);
-  doc.setTextColor(...C.accent);
-  doc.text(brandName.toUpperCase(), cx, midY + 34, { align: 'center' });
+  doc.setFontSize(16);
+  doc.setTextColor(0, 0, 0);
+  doc.text(brandName.toUpperCase(), cx, midY + 42, { align: 'center' });
 
-  // ── Strategy Box (Modern Grid) ──
-  const boxTop = 175;
-  const boxW = 140;
-  const boxX = (PAGE_W - boxW) / 2;
-  const boxH = 65;
-
-  doc.setDrawColor(...C.border);
-  doc.setLineWidth(0.1);
-  doc.rect(boxX, boxTop, boxW, boxH);
-
+  // ── Minimalist section list ──
+  const listTop = 195;
   const sectionsContent = [
     'NAME • PURPOSE • VISION',
     'CHARACTER • VALUES • CAUSE',
@@ -244,31 +233,28 @@ function drawCover(doc: jsPDF, brandName: string, tagline: string, date: string)
     'CREATION • PRODUCT • POWER'
   ];
 
-  let textY = boxTop + 15;
+  let textY = listTop;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(...C.textMuted);
+  doc.setTextColor(140, 140, 140);
   for (const line of sectionsContent) {
     doc.text(line, cx, textY, { align: 'center' });
-    textY += 12;
+    textY += 10;
   }
 
-  // ── Bottom Section ──
+  // ── Bottom ──
   const footerY = PAGE_H - 30;
   
-  // Date & Badge
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(...C.primary);
+  doc.setTextColor(0, 0, 0);
   doc.text(date.toUpperCase(), cx, footerY, { align: 'center' });
   
-  doc.setDrawColor(...C.accent);
-  doc.setLineWidth(0.5);
+  doc.setLineWidth(0.3);
   doc.line(cx - 15, footerY + 4, cx + 15, footerY + 4);
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(...C.textLight);
+  doc.setFontSize(7);
+  doc.setTextColor(140, 140, 140);
   doc.text('CONFIDENTIAL STRATEGIC REPORT', cx, footerY + 12, { align: 'center' });
 }
 
@@ -736,11 +722,19 @@ export interface PdfOptions {
   marketData: MarketData;
   brandName?: string;
   tagline?: string;
+  onProgress?: (step: string, pct: number) => void;
 }
 
-export function generateBigDocPdf(options: PdfOptions): void {
-  const { brandscript, contextPayload, marketData, brandName, tagline } = options;
+/** Small helper to yield to the event loop so the UI can repaint */
+function tick(): Promise<void> {
+  return new Promise(r => setTimeout(r, 0));
+}
 
+export async function generateBigDocPdf(options: PdfOptions): Promise<void> {
+  const { brandscript, contextPayload, marketData, brandName, tagline, onProgress } = options;
+  const report = (step: string, pct: number) => { if (onProgress) onProgress(step, pct); };
+
+  report('Initialising PDF engine…', 0);
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
 
   const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -748,30 +742,48 @@ export function generateBigDocPdf(options: PdfOptions): void {
   const resolvedTagline = tagline || brandscript.name?.tagline || '';
 
   // 1. Cover
+  report('Drawing cover page…', 5);
+  await tick();
   drawCover(doc, resolvedBrandName, resolvedTagline, date);
 
   // 2. Table of Contents
+  report('Building table of contents…', 12);
+  await tick();
   drawTOC(doc);
 
   // 3. Executive Summary
+  report('Writing executive summary…', 20);
+  await tick();
   drawExecutiveSummary(doc, marketData, resolvedBrandName);
 
   // 4. Context Summary
+  report('Compiling strategic context…', 28);
+  await tick();
   drawContext(doc, contextPayload);
 
   // 5. Market Intelligence (5 market pages + recommendations/KPIs)
+  report('Rendering market intelligence…', 35);
+  await tick();
   drawMarketSections(doc, marketData);
 
   // 6. Framework Sections (8 sections with embedded reference)
+  report('Assembling brand framework sections…', 55);
+  await tick();
   drawFrameworkSections(doc, brandscript);
 
   // 7. Superpower Reference
+  report('Adding competitive advantage reference…', 75);
+  await tick();
   drawSuperpowerRef(doc);
 
   // 8. Archetype Reference
+  report('Adding archetype reference guide…', 82);
+  await tick();
   drawArchetypeRef(doc);
 
   // 9. Footers on all pages except cover
+  report('Stamping page footers…', 90);
+  await tick();
   const total = doc.getNumberOfPages();
   for (let i = 2; i <= total; i++) {
     doc.setPage(i);
@@ -779,6 +791,11 @@ export function generateBigDocPdf(options: PdfOptions): void {
   }
 
   // 10. Download
+  report('Saving PDF file…', 96);
+  await tick();
   const safe = resolvedBrandName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-');
   doc.save(`BIG-Doc-${safe}-${new Date().toISOString().slice(0, 10)}.pdf`);
+
+  report('PDF download complete ✔', 100);
 }
+
