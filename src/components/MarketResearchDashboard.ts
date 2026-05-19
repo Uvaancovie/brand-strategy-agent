@@ -1,11 +1,12 @@
 // ─── MARKET RESEARCH DASHBOARD ───────────────────────────────────────
 // Interactive dashboard for visualizing market research data with charts and figures
 
-import { state, saveSession } from '../store/brandscript.store';
-import { fetchMarketResearchForDisplay, formatMarketDataForCharts, hasValidMarketResearch } from '../services/market-dashboard.service';
+import { state, saveSession, type CustomScrapeResult } from '../store/brandscript.store';
+import { fetchMarketResearchForDisplay, formatMarketDataForCharts, hasValidMarketResearch, scrapeAndAnalyzeCustomSource } from '../services/market-dashboard.service';
 
 export function renderMarketResearchDashboard(container: HTMLElement): void {
   const mr = state.marketResearch;
+  const customScrapeSection = renderCustomScrapeSection(mr.customScrapes || []);
 
   // Header section
   const headerHtml = `
@@ -68,6 +69,7 @@ export function renderMarketResearchDashboard(container: HTMLElement): void {
         <div class="mr-error-message">${mr.error}</div>
         <button id="mr-retry-btn" class="btn-secondary">Retry</button>
       </div>
+      ${customScrapeSection}
     `;
     setTimeout(() => attachEventListeners(), 50);
     return;
@@ -140,6 +142,7 @@ export function renderMarketResearchDashboard(container: HTMLElement): void {
           </div>
         </div>
       </div>
+      ${customScrapeSection}
     `;
     setTimeout(() => attachEventListeners(), 50);
     return;
@@ -378,6 +381,8 @@ export function renderMarketResearchDashboard(container: HTMLElement): void {
         </table>
       </div>
     </div>
+
+    ${customScrapeSection}
 
     <!-- Data Sources -->
     ${data.dataSources && data.dataSources.length > 0 ? `
@@ -653,4 +658,266 @@ function attachEventListeners() {
       }
     });
   }
+
+  attachCustomScrapeListeners();
+}
+
+function renderCustomScrapeSection(scrapes: CustomScrapeResult[]): string {
+  return `
+    <div class="mr-section mr-custom-scrape-section">
+      <div class="mr-section-header">
+        <h3>Custom Data Extraction</h3>
+      </div>
+      <div class="mr-custom-card">
+        <div class="mr-custom-form">
+          <label class="mr-custom-label" for="mr-custom-url">Source URL</label>
+          <input type="url" id="mr-custom-url" class="mr-custom-input" placeholder="https://www.statssa.gov.za/..." />
+          <label class="mr-custom-label" for="mr-custom-prompt">Extraction goal</label>
+          <textarea id="mr-custom-prompt" class="mr-custom-textarea" rows="2" placeholder="Find stats of South African players and return a table"></textarea>
+          <div class="mr-custom-actions">
+            <button id="mr-custom-run" class="btn-primary">Extract Data</button>
+          </div>
+        </div>
+        <div id="mr-custom-loader" class="mr-custom-loader hidden">
+          <div class="mr-custom-loader-row">
+            <span id="mr-custom-step">Initializing...</span>
+            <span id="mr-custom-pct">0%</span>
+          </div>
+          <div class="mr-custom-progress">
+            <div id="mr-custom-bar" class="mr-custom-progress-bar" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+      <div id="mr-custom-results">
+        ${renderCustomScrapes(scrapes)}
+      </div>
+    </div>
+  `;
+}
+
+function renderCustomScrapes(scrapes: CustomScrapeResult[]): string {
+  if (!scrapes.length) {
+    return '<div class="mr-custom-empty">No custom extracts yet.</div>';
+  }
+
+  const ordered = scrapes
+    .map((scrape, index) => ({ scrape, index }))
+    .reverse();
+
+  return ordered.map(({ scrape, index }) => {
+    const rows = Array.isArray(scrape.data) ? scrape.data : [];
+    const headers = getTableHeaders(rows);
+    const createdAt = scrape.createdAt ? new Date(scrape.createdAt).toLocaleString() : '';
+    const urlDisplay = escapeHtml(scrape.url);
+    const promptDisplay = escapeHtml(scrape.prompt);
+
+    if (!rows.length || !headers.length) {
+      return `
+        <div class="mr-custom-result">
+          <div class="mr-custom-result-header">
+            <div>
+              <div class="mr-custom-result-title">${urlDisplay}</div>
+              <div class="mr-custom-result-meta">Prompt: ${promptDisplay}</div>
+              ${createdAt ? `<div class="mr-custom-result-meta">Created: ${escapeHtml(createdAt)}</div>` : ''}
+            </div>
+          </div>
+          <div class="mr-custom-empty">No structured data was extracted.</div>
+        </div>
+      `;
+    }
+
+    const headerHtml = headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+    const rowsHtml = rows.map(row => {
+      const cells = headers.map(h => `<td>${escapeHtml(formatCellValue(row[h]))}</td>`).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
+
+    return `
+      <div class="mr-custom-result">
+        <div class="mr-custom-result-header">
+          <div>
+            <div class="mr-custom-result-title">
+              <a href="${urlDisplay}" target="_blank" rel="noopener noreferrer">${urlDisplay}</a>
+            </div>
+            <div class="mr-custom-result-meta">Prompt: ${promptDisplay}</div>
+            ${createdAt ? `<div class="mr-custom-result-meta">Created: ${escapeHtml(createdAt)}</div>` : ''}
+          </div>
+          <div class="mr-custom-result-actions">
+            <button class="btn-secondary mr-custom-export" data-index="${index}" data-format="csv">Export CSV</button>
+            <button class="btn-secondary mr-custom-export" data-index="${index}" data-format="xls">Export Excel</button>
+          </div>
+        </div>
+        <div class="mr-custom-table-wrap">
+          <table class="mr-custom-table">
+            <thead><tr>${headerHtml}</tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function attachCustomScrapeListeners(): void {
+  const runBtn = document.getElementById('mr-custom-run') as HTMLButtonElement | null;
+  const urlInput = document.getElementById('mr-custom-url') as HTMLInputElement | null;
+  const promptInput = document.getElementById('mr-custom-prompt') as HTMLTextAreaElement | null;
+  const loader = document.getElementById('mr-custom-loader');
+  const stepEl = document.getElementById('mr-custom-step');
+  const pctEl = document.getElementById('mr-custom-pct');
+  const barEl = document.getElementById('mr-custom-bar') as HTMLElement | null;
+  const resultsContainer = document.getElementById('mr-custom-results');
+
+  if (runBtn && !runBtn.dataset.bound) {
+    runBtn.dataset.bound = 'true';
+    runBtn.addEventListener('click', async () => {
+      const url = urlInput?.value.trim() || '';
+      const prompt = promptInput?.value.trim() || '';
+
+      if (!url || !prompt) {
+        alert('Please enter both a URL and an extraction goal.');
+        return;
+      }
+
+      runBtn.disabled = true;
+      loader?.classList.remove('hidden');
+
+      try {
+        const extracted = await scrapeAndAnalyzeCustomSource(url, prompt, (step, pct) => {
+          if (stepEl) stepEl.textContent = step;
+          if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+          if (barEl) barEl.style.width = `${Math.round(pct)}%`;
+        });
+
+        if (!state.marketResearch.customScrapes) {
+          state.marketResearch.customScrapes = [];
+        }
+
+        state.marketResearch.customScrapes.push({
+          url: normalizeUrl(url),
+          prompt,
+          data: extracted,
+          createdAt: new Date().toISOString(),
+        });
+        saveSession();
+
+        if (resultsContainer) {
+          resultsContainer.innerHTML = renderCustomScrapes(state.marketResearch.customScrapes);
+          attachCustomExportListeners();
+        }
+
+        if (urlInput) urlInput.value = '';
+        if (promptInput) promptInput.value = '';
+      } catch (error) {
+        alert(`Extraction failed: ${(error as Error).message}`);
+      } finally {
+        runBtn.disabled = false;
+        loader?.classList.add('hidden');
+      }
+    });
+  }
+
+  attachCustomExportListeners();
+}
+
+function attachCustomExportListeners(): void {
+  document.querySelectorAll<HTMLButtonElement>('.mr-custom-export').forEach(button => {
+    if (button.dataset.bound) return;
+    button.dataset.bound = 'true';
+
+    button.addEventListener('click', () => {
+      const index = Number(button.dataset.index || '0');
+      const format = button.dataset.format || 'csv';
+      const scrape = state.marketResearch.customScrapes[index];
+      if (!scrape || !Array.isArray(scrape.data) || !scrape.data.length) return;
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const baseName = `custom-extract-${timestamp}`;
+
+      if (format === 'xls') {
+        downloadExcel(scrape.data, `${baseName}.xls`);
+      } else {
+        downloadCsv(scrape.data, `${baseName}.csv`);
+      }
+    });
+  });
+}
+
+function downloadCsv(rows: Record<string, string | number | boolean | null>[], filename: string): void {
+  if (!rows.length) return;
+  const headers = getTableHeaders(rows);
+  const lines = [headers.join(',')];
+
+  for (const row of rows) {
+    const values = headers.map(header => {
+      const value = formatCellValue(row[header]);
+      return `"${String(value).replace(/"/g, '""')}"`;
+    });
+    lines.push(values.join(','));
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  triggerDownload(blob, filename);
+}
+
+function downloadExcel(rows: Record<string, string | number | boolean | null>[], filename: string): void {
+  if (!rows.length) return;
+  const headers = getTableHeaders(rows);
+  const headHtml = headers.map(h => `<th>${escapeHtml(h)}</th>`).join('');
+  const bodyHtml = rows.map(row => {
+    const cells = headers.map(h => `<td>${escapeHtml(formatCellValue(row[h]))}</td>`).join('');
+    return `<tr>${cells}</tr>`;
+  }).join('');
+
+  const html = `
+    <table>
+      <thead><tr>${headHtml}</tr></thead>
+      <tbody>${bodyHtml}</tbody>
+    </table>
+  `;
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  triggerDownload(blob, filename);
+}
+
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function getTableHeaders(rows: Record<string, string | number | boolean | null>[]): string[] {
+  const headerSet = new Set<string>();
+  rows.forEach(row => {
+    Object.keys(row).forEach(key => headerSet.add(key));
+  });
+  return Array.from(headerSet);
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return JSON.stringify(value);
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function normalizeUrl(raw: string): string {
+  const value = raw.trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  return `https://${value}`;
 }

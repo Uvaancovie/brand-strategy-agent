@@ -40,6 +40,13 @@ export interface Transcript {
   updatedAt: string;
 }
 
+export interface CustomScrapeResult {
+  url: string;
+  prompt: string;
+  data: Record<string, string | number | boolean | null>[];
+  createdAt: string;
+}
+
 export interface MarketResearchState {
   loading: boolean;
   error: string | null;
@@ -47,6 +54,7 @@ export interface MarketResearchState {
   sourcesCount: number;
   lastUpdated: string | null;
   firecrawlResults: FirecrawlMarketResult[];
+  customScrapes: CustomScrapeResult[];
 }
 
 export interface AppState {
@@ -104,6 +112,7 @@ export const state: AppState = {
     sourcesCount: 0,
     lastUpdated: null,
     firecrawlResults: [],
+    customScrapes: [],
   },
   // Mark: Market Research Agent state
   marketData: null,
@@ -238,6 +247,7 @@ export function loadSession(): boolean {
         ...state.marketResearch,
         ...data.marketResearch,
         firecrawlResults: data.marketResearch.firecrawlResults || [],
+        customScrapes: data.marketResearch.customScrapes || [],
       };
     } else {
       state.marketResearch = {
@@ -247,6 +257,7 @@ export function loadSession(): boolean {
         sourcesCount: Array.isArray(data.firecrawlResults) ? data.firecrawlResults.length : 0,
         lastUpdated: null,
         firecrawlResults: data.firecrawlResults || [],
+        customScrapes: [],
       };
     }
     // Mark: Market Research Agent - restore persisted research
@@ -283,6 +294,7 @@ export function clearSession(): void {
     sourcesCount: 0,
     lastUpdated: null,
     firecrawlResults: [],
+    customScrapes: [],
   };
   // Mark: Market Research Agent
   state.marketData = null;
