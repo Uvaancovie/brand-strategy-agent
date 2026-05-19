@@ -730,6 +730,42 @@ function tick(): Promise<void> {
   return new Promise(r => setTimeout(r, 0));
 }
 
+function triggerDownload(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export interface PdfTemplateOptions {
+  url?: string;
+  fileName?: string;
+  onProgress?: (step: string, pct: number) => void;
+}
+
+export async function downloadBigDocTemplate(options: PdfTemplateOptions = {}): Promise<void> {
+  const { url = '/big-doc-template.pdf', fileName = 'Glee Fro Girl B.I.G DOC.pdf', onProgress } = options;
+  const report = (step: string, pct: number) => { if (onProgress) onProgress(step, pct); };
+
+  report('Preparing template download…', 10);
+  await tick();
+
+  const response = await fetch(url, { cache: 'no-cache' });
+  if (!response.ok) throw new Error(`Template download failed (${response.status})`);
+
+  report('Downloading template PDF…', 60);
+  await tick();
+
+  const blob = await response.blob();
+  report('Saving template PDF…', 90);
+  await tick();
+  triggerDownload(blob, fileName);
+
+  report('Template PDF download complete ✔', 100);
+}
+
 export async function generateBigDocPdf(options: PdfOptions): Promise<void> {
   const { brandscript, contextPayload, marketData, brandName, tagline, onProgress } = options;
   const report = (step: string, pct: number) => { if (onProgress) onProgress(step, pct); };

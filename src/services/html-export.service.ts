@@ -77,7 +77,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
     }).join('');
 
     return `
-      <div class="page-break section-block">
+      <div class="page-break section-block avoid-break">
         <h2 class="section-title"><span class="icon">${section.icon}</span> ${section.label.toUpperCase()}</h2>
         <div class="table-container">
           <table>
@@ -98,22 +98,15 @@ export function generateHtmlDoc(options: ExportOptions): string {
   }).join('');
 
   return `
-<div id="pdf-export-container" style="background: white; color: #1A1A1A; font-family: 'Inter', sans-serif;">
+<div id="pdf-export-container" style="background: white; color: #101010; font-family: 'Source Sans 3', sans-serif;">
   <style>
-    /* PREMIUM CORPORATE STYLES - VOLCANIC ORANGE, CHARCOAL & AMBER */
+    @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Source+Sans+3:wght@300;400;600;700&display=swap');
     :root {
-      --brand-orange: #FF5A00;
-      --brand-amber: #FFB300;
-      --brand-charcoal: #1A1A1A;
-      --brand-charcoal-light: #2C2C2C;
-      --brand-slate: #4A4A4A;
-      --black: #000000;
-      --dark-gray: #333333;
-      --mid-gray: #888888;
-      --light-gray: #E0E0E0;
-      --off-white: #F9F9F9;
-      --white: #ffffff;
-      --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --ink: #101010;
+      --ink-muted: #5a5a5a;
+      --border: #d8d8d8;
+      --paper: #ffffff;
+      --shade: #f6f6f6;
     }
 
     * { box-sizing: border-box; }
@@ -121,18 +114,31 @@ export function generateHtmlDoc(options: ExportOptions): string {
     .document {
       width: 210mm;
       margin: 0 auto;
-      background: var(--white);
+      background: var(--paper);
       padding: 15mm;
-      color: var(--brand-charcoal);
-      line-height: 1.6;
+      color: var(--ink);
+      line-height: 1.65;
     }
     
     .page-break { 
       page-break-before: always; 
+      break-before: page;
       margin-top: 15mm;
     }
+    .avoid-break,
+    .section-block,
+    .table-container,
+    table,
+    thead,
+    tbody,
+    tr,
+    td,
+    th {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
 
-    h1, h2, h3, h4 { font-family: var(--font-sans); color: var(--brand-charcoal); margin-top: 0; }
+    h1, h2, h3, h4 { font-family: 'Cormorant Garamond', serif; color: var(--ink); margin-top: 0; }
     
     /* Cover Page */
     .cover-page {
@@ -142,116 +148,141 @@ export function generateHtmlDoc(options: ExportOptions): string {
       align-items: center;
       text-align: center;
       min-height: 250mm;
-      background-color: var(--brand-charcoal);
-      color: var(--white);
+      background-color: var(--paper);
+      color: var(--ink);
       padding: 40px;
       position: relative;
       overflow: hidden;
     }
-    .cover-page::before {
-      content: "";
+    .accent-image {
       position: absolute;
-      top: 0; left: 0; right: 0; height: 12px;
-      background: linear-gradient(90deg, var(--brand-orange), var(--brand-amber));
+      pointer-events: none;
+      z-index: 0;
     }
-    .cover-page::after {
-      content: "";
+    .cover-accent {
+      bottom: 0;
+      right: 0;
+      width: 240px;
+      opacity: 0.85;
+      filter: brightness(0) saturate(100%);
+    }
+    .market-section {
+      position: relative;
+      overflow: hidden;
+    }
+    .market-accent {
+      bottom: 0;
+      right: 0;
+      width: 240px;
+      opacity: 0.85;
+      filter: brightness(0) saturate(100%);
+    }
+    .section-layer {
+      position: relative;
+      z-index: 1;
+    }
+    .cover-top-rule {
       position: absolute;
-      bottom: 0; left: 0; right: 0; height: 12px;
-      background: linear-gradient(90deg, var(--brand-amber), var(--brand-orange));
+      top: 28px;
+      left: 15mm;
+      right: 15mm;
+      border-top: 1px solid var(--ink);
     }
     .cover-eyebrow {
-      font-size: 1rem;
-      letter-spacing: 4px;
-      color: var(--brand-amber);
-      margin-bottom: 2rem;
+      font-size: 0.7rem;
+      letter-spacing: 3px;
+      color: var(--ink);
+      margin-bottom: 2.5rem;
       text-transform: uppercase;
       font-weight: 600;
     }
     .cover-title {
-      font-size: 4rem;
-      font-weight: 900;
-      letter-spacing: -1.5px;
-      line-height: 1.1;
+      font-size: 4.2rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      line-height: 1.05;
       margin-bottom: 1rem;
       text-transform: uppercase;
-      color: var(--white);
+      color: var(--ink);
     }
     .cover-brand {
-      font-size: 2.5rem;
-      font-weight: 300;
-      color: var(--light-gray);
-      margin-bottom: 4rem;
+      font-size: 1.4rem;
+      font-weight: 400;
+      color: var(--ink);
+      margin-bottom: 3rem;
+      letter-spacing: 1px;
     }
     .cover-grid {
-      border-top: 1px solid rgba(255,255,255,0.2);
-      border-bottom: 1px solid rgba(255,255,255,0.2);
-      padding: 2rem 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 0;
       margin-bottom: 3rem;
       width: 80%;
       display: flex;
       justify-content: space-around;
       flex-wrap: wrap;
+      font-family: 'Source Sans 3', sans-serif;
     }
     .cover-grid span {
-      font-size: 0.85rem;
+      font-size: 0.7rem;
       letter-spacing: 2px;
-      color: var(--white);
+      color: var(--ink-muted);
       text-transform: uppercase;
-      padding: 0.5rem 1rem;
+      padding: 0.35rem 0.6rem;
     }
     .cover-date {
       font-weight: 600;
-      font-size: 1.2rem;
-      color: var(--brand-orange);
+      font-size: 0.95rem;
+      color: var(--ink);
+      letter-spacing: 1px;
     }
     .cover-confidential {
-      font-size: 0.75rem;
-      color: var(--mid-gray);
-      margin-top: 1rem;
+      font-size: 0.65rem;
+      color: var(--ink-muted);
+      margin-top: 0.75rem;
       letter-spacing: 2px;
     }
     
     /* Document Sections */
     .section-title {
-      font-size: 2rem;
-      font-weight: 900;
-      color: var(--brand-charcoal);
-      border-bottom: 4px solid var(--brand-orange);
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--ink);
+      border-bottom: 1px solid var(--ink);
       padding-bottom: 0.5rem;
       margin-bottom: 1.5rem;
       display: flex;
-      gap: 1rem;
+      gap: 0.75rem;
       align-items: center;
       text-transform: uppercase;
-      letter-spacing: -0.5px;
+      letter-spacing: 1px;
     }
-    .section-title .icon { color: var(--brand-orange); }
+    .section-title .icon { color: var(--ink); }
     
     .sub-heading {
-      font-size: 1.25rem;
-      font-weight: 800;
+      font-size: 1.1rem;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 1px;
-      margin-top: 2.5rem;
-      margin-bottom: 1rem;
-      color: var(--brand-charcoal-light);
+      margin-top: 2.2rem;
+      margin-bottom: 0.8rem;
+      color: var(--ink);
       display: flex;
       align-items: center;
     }
     .sub-heading::before {
       content: "";
       display: inline-block;
-      width: 8px;
-      height: 8px;
-      background-color: var(--brand-amber);
+      width: 6px;
+      height: 6px;
+      background-color: var(--ink);
       border-radius: 50%;
       margin-right: 10px;
     }
     
-    p { margin-top: 0; margin-bottom: 1.25rem; font-size: 1.05rem; color: var(--brand-slate); }
+    p { margin-top: 0; margin-bottom: 1.25rem; font-size: 0.98rem; color: var(--ink-muted); }
     
-    .text-muted { color: var(--mid-gray); font-style: italic; font-size: 0.95rem; }
+    .text-muted { color: var(--ink-muted); font-style: italic; font-size: 0.9rem; }
     
     /* Context Styling */
     .context-subheading {
@@ -266,12 +297,12 @@ export function generateHtmlDoc(options: ExportOptions): string {
       padding-bottom: 0.25rem;
     }
     .context-block {
-      background: var(--off-white);
-      border-left: 4px solid var(--brand-charcoal);
-      padding: 1.5rem;
+      background: var(--shade);
+      border-left: 3px solid var(--ink);
+      padding: 1.2rem;
       margin-bottom: 2rem;
-      font-size: 0.95rem;
-      border-radius: 0 8px 8px 0;
+      font-size: 0.92rem;
+      border-radius: 0 6px 6px 0;
     }
     
     /* Grids & Cards */
@@ -282,35 +313,35 @@ export function generateHtmlDoc(options: ExportOptions): string {
       margin-bottom: 2rem;
     }
     .metric-box {
-      background: var(--white);
-      border: 1px solid var(--light-gray);
-      border-top: 4px solid var(--brand-orange);
-      border-radius: 6px;
-      padding: 1.5rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--ink);
+      border-radius: 4px;
+      padding: 1.2rem;
+      box-shadow: none;
       text-align: center;
     }
     .metric-box-label {
-      font-size: 0.8rem;
+      font-size: 0.7rem;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: var(--brand-slate);
-      margin-bottom: 0.75rem;
+      color: var(--ink-muted);
+      margin-bottom: 0.6rem;
       font-weight: 600;
     }
     .metric-box-val {
-      font-size: 1.8rem;
-      font-weight: 900;
-      color: var(--brand-charcoal);
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--ink);
     }
     
     /* Tables */
     .table-container {
-      margin-bottom: 2.5rem;
-      border-radius: 8px;
+      margin-bottom: 2.2rem;
+      border-radius: 4px;
       overflow: hidden;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-      border: 1px solid var(--light-gray);
+      box-shadow: none;
+      border: 1px solid var(--border);
     }
     table {
       width: 100%;
@@ -319,66 +350,66 @@ export function generateHtmlDoc(options: ExportOptions): string {
       background: var(--white);
     }
     th, td {
-      padding: 1.2rem;
+      padding: 0.95rem;
       text-align: left;
-      border-bottom: 1px solid var(--light-gray);
+      border-bottom: 1px solid var(--border);
       vertical-align: top;
     }
     th {
-      background-color: var(--brand-charcoal);
-      color: var(--white);
-      font-weight: 700;
+      background-color: var(--ink);
+      color: var(--paper);
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 1px;
-      font-size: 0.85rem;
+      font-size: 0.7rem;
     }
     tr:last-child td { border-bottom: none; }
-    tr:nth-child(even) { background-color: var(--off-white); }
-    .col-field { font-weight: 800; width: 22%; color: var(--brand-charcoal); }
-    .col-desc { font-style: italic; color: var(--brand-slate); width: 28%; font-size: 0.85rem; }
-    .col-value { width: 50%; color: var(--brand-charcoal-light); }
+    tr:nth-child(even) { background-color: #fbfbfb; }
+    .col-field { font-weight: 600; width: 22%; color: var(--ink); }
+    .col-desc { font-style: italic; color: var(--ink-muted); width: 28%; font-size: 0.8rem; }
+    .col-value { width: 50%; color: var(--ink); }
     
     /* Strategic Output specific */
     .strategy-card {
-      background: var(--white);
-      border: 1px solid var(--light-gray);
-      border-left: 5px solid var(--brand-amber);
-      border-radius: 6px;
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--ink);
+      border-radius: 4px;
+      padding: 1.2rem;
+      margin-bottom: 1.4rem;
+      box-shadow: none;
     }
     .strategy-card h4 {
       margin-bottom: 0.5rem;
-      font-size: 1.25rem;
-      color: var(--brand-charcoal);
-      font-weight: 800;
+      font-size: 1.15rem;
+      color: var(--ink);
+      font-weight: 600;
     }
     .strategy-meta {
       display: inline-block;
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       font-weight: 600;
-      color: var(--white);
-      background: var(--brand-charcoal-light);
-      padding: 4px 10px;
-      border-radius: 4px;
-      margin-bottom: 1rem;
+      color: var(--paper);
+      background: var(--ink);
+      padding: 3px 8px;
+      border-radius: 3px;
+      margin-bottom: 0.8rem;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
     ul { margin: 0 0 1rem 0; padding-left: 1.5rem; color: var(--brand-slate); }
     li { margin-bottom: 0.75rem; }
-    li::marker { color: var(--brand-orange); font-weight: bold; }
+    li::marker { color: var(--ink); font-weight: bold; }
 
     /* Footer / Date */
     .doc-footer {
       text-align: center;
       margin-top: 4rem;
-      border-top: 1px solid var(--light-gray);
+      border-top: 1px solid var(--border);
       padding-top: 2rem;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       font-weight: 600;
-      color: var(--brand-slate);
+      color: var(--ink-muted);
       text-transform: uppercase;
       letter-spacing: 2px;
     }
@@ -391,21 +422,22 @@ export function generateHtmlDoc(options: ExportOptions): string {
       margin-bottom: 2rem;
     }
     .swot-box {
-      border-radius: 8px;
+      border-radius: 4px;
       overflow: hidden;
-      border: 1px solid var(--light-gray);
+      border: 1px solid var(--border);
     }
     .swot-header {
-      padding: 1rem;
-      font-weight: 800;
-      color: var(--white);
+      padding: 0.9rem;
+      font-weight: 700;
+      color: var(--paper);
       text-transform: uppercase;
       letter-spacing: 1px;
+      background: var(--ink);
     }
-    .swot-s .swot-header { background: var(--brand-charcoal); }
-    .swot-w .swot-header { background: var(--brand-orange); }
-    .swot-o .swot-header { background: var(--brand-amber); color: var(--brand-charcoal); }
-    .swot-t .swot-header { background: var(--brand-slate); }
+    .swot-s .swot-header { background: var(--ink); }
+    .swot-w .swot-header { background: #333333; }
+    .swot-o .swot-header { background: #555555; }
+    .swot-t .swot-header { background: #777777; }
     
     .swot-content {
       padding: 0;
@@ -416,7 +448,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
       margin: 0;
     }
     .swot-table th { display: none; } /* Hide headers inside grid to save space */
-    .swot-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--light-gray); font-size: 0.9rem; }
+    .swot-table td { padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
     .swot-table tr:last-child td { border-bottom: none; }
   </style>
 
@@ -424,7 +456,10 @@ export function generateHtmlDoc(options: ExportOptions): string {
     
     <!-- COVER PAGE -->
     <div class="cover-page">
-      <div class="cover-eyebrow">Volcanic Marketing • Extraordinary by Design</div>
+      <img class="accent-image cover-accent" src="/src/assets/assets-for-pdf/brand-strategy-accent.png" alt="" />
+      <div class="section-layer">
+      <div class="cover-top-rule"></div>
+      <div class="cover-eyebrow">Volcanic Marketing</div>
       <h1 class="cover-title">Brand<br>Strategy</h1>
       <div class="cover-brand">${resolvedBrandName}</div>
       <div class="cover-grid">
@@ -435,6 +470,7 @@ export function generateHtmlDoc(options: ExportOptions): string {
       </div>
       <div class="cover-date">${date}</div>
       <div class="cover-confidential">CONFIDENTIAL STRATEGIC REPORT</div>
+      </div>
     </div>
 
     <!-- EXECUTIVE SUMMARY -->
@@ -460,40 +496,43 @@ export function generateHtmlDoc(options: ExportOptions): string {
 
     <!-- MARKET INTELLIGENCE -->
     ${marketData ? `
-    <div class="page-break">
-      <h2 class="section-title">Mark Market Research Dashboard</h2>
-      <div class="strategy-card" style="border-left-color: var(--brand-orange);">
-        <h4 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Mark, Market Research Agent</h4>
-        <p style="margin: 0;">Mark researched the user's industry and country, then translated the evidence into quantified market sizing, customer benchmarks, competitive pressure, and strategic next actions.</p>
+    <div class="page-break market-section">
+      <img class="accent-image market-accent" src="/src/assets/assets-for-pdf/market-strategy-accent.png" alt="" />
+      <div class="section-layer">
+        <h2 class="section-title">Mark Market Research Dashboard</h2>
+        <div class="strategy-card" style="border-left-color: var(--brand-orange);">
+          <h4 style="font-size: 1.5rem; margin-bottom: 0.5rem;">Mark, Market Research Agent</h4>
+          <p style="margin: 0;">Mark researched the user's industry and country, then translated the evidence into quantified market sizing, customer benchmarks, competitive pressure, and strategic next actions.</p>
+        </div>
+        <div class="metric-grid">
+          <div class="metric-box">
+            <div class="metric-box-label">TAM</div>
+            <div class="metric-box-val">${marketData.marketSizing?.tam.value || 'N/A'}</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-box-label">SAM</div>
+            <div class="metric-box-val">${marketData.marketSizing?.sam.value || 'N/A'}</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-box-label">SOM</div>
+            <div class="metric-box-val">${marketData.marketSizing?.som.value || 'N/A'}</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-box-label">Growth</div>
+            <div class="metric-box-val">${marketData.marketSizing?.growth_cagr || 'N/A'}</div>
+          </div>
+        </div>
+        ${marketData.strategicRecommendations?.[0] ? `
+          <div class="strategy-card" style="border-left-color: var(--brand-amber);">
+            <div class="strategy-meta">Strategic Recommendation</div>
+            <h4 style="font-size: 1.4rem; color: var(--brand-charcoal);">${marketData.strategicRecommendations[0].title}</h4>
+            <p><strong>Priority:</strong> ${marketData.strategicRecommendations[0].priority} &nbsp; <strong>Timeline:</strong> ${marketData.strategicRecommendations[0].timeline} &nbsp; <strong>ROI:</strong> ${marketData.strategicRecommendations[0].roi}</p>
+            <ul style="margin-top: 1rem;">
+              ${marketData.strategicRecommendations[0].steps.slice(0, 3).map(step => `<li>${step}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
       </div>
-      <div class="metric-grid">
-        <div class="metric-box">
-          <div class="metric-box-label">TAM</div>
-          <div class="metric-box-val">${marketData.marketSizing?.tam.value || 'N/A'}</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-box-label">SAM</div>
-          <div class="metric-box-val">${marketData.marketSizing?.sam.value || 'N/A'}</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-box-label">SOM</div>
-          <div class="metric-box-val">${marketData.marketSizing?.som.value || 'N/A'}</div>
-        </div>
-        <div class="metric-box">
-          <div class="metric-box-label">Growth</div>
-          <div class="metric-box-val">${marketData.marketSizing?.growth_cagr || 'N/A'}</div>
-        </div>
-      </div>
-      ${marketData.strategicRecommendations?.[0] ? `
-        <div class="strategy-card" style="border-left-color: var(--brand-amber);">
-          <div class="strategy-meta">Strategic Recommendation</div>
-          <h4 style="font-size: 1.4rem; color: var(--brand-charcoal);">${marketData.strategicRecommendations[0].title}</h4>
-          <p><strong>Priority:</strong> ${marketData.strategicRecommendations[0].priority} &nbsp; <strong>Timeline:</strong> ${marketData.strategicRecommendations[0].timeline} &nbsp; <strong>ROI:</strong> ${marketData.strategicRecommendations[0].roi}</p>
-          <ul style="margin-top: 1rem;">
-            ${marketData.strategicRecommendations[0].steps.slice(0, 3).map(step => `<li>${step}</li>`).join('')}
-          </ul>
-        </div>
-      ` : ''}
     </div>
 
     <div class="page-break">

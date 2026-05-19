@@ -27,7 +27,6 @@ import type { FirecrawlMarketResult } from './services/firecrawl.service';
 import { saveBrandscriptToSupabase } from './services/brandscript.service';
 import { saveMarketResearch, saveDocumentExport } from './services/brandscript.service';
 import { generateHtmlDoc } from './services/html-export.service';
-import { generateBigDocPdf } from './services/pdf.service';
 import html2pdf from 'html2pdf.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -1432,6 +1431,16 @@ function updateProgress(pct: number, subtitle?: string): void {
   if (subtitle) processingSubtitle.textContent = subtitle;
 }
 
+function showProcessingOverlay(): void {
+  processingOverlay.classList.add('active');
+  processingOverlay.classList.remove('hidden');
+}
+
+function hideProcessingOverlay(): void {
+  processingOverlay.classList.remove('active');
+  processingOverlay.classList.add('hidden');
+}
+
 function addProcessingStep(text: string, pct?: number): void {
   // Mark previous step as done
   if (currentStepEl) {
@@ -1507,7 +1516,7 @@ btnDownloadPdf.addEventListener('click', async () => {
   resetProcessingOverlay();
   processingTitle.textContent = 'Researching Your Market';
   processingSubtitle.textContent = `Preparing market research for ${industry} in ${country}...`;
-  processingOverlay.classList.remove('hidden');
+  showProcessingOverlay();
   updateProgress(2);
   addProcessingStep(`Initializing research for ${country}`, 2);
 
@@ -1548,18 +1557,43 @@ btnDownloadPdf.addEventListener('click', async () => {
     const safe = bName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-');
     const fileName = `BIG-Doc-${safe}-${new Date().toISOString().slice(0, 10)}.pdf`;
 
-    await generateBigDocPdf({
+    addProcessingStep('Rendering report layout...', 72);
+    updateProgress(72, 'Rendering the report layout...');
+
+    const html = generateHtmlDoc({
       brandscript: state.brandscript,
       contextPayload: state.contextPayload,
       marketData,
       brandName: bName,
-      onProgress: (step, pct) => {
-        // Map PDF progress (0-100) to overall progress (70-88)
-        const totalPct = Math.round(70 + pct * 0.18);
-        updateProgress(totalPct, step);
-        addProcessingStep(step, totalPct);
-      },
     });
+
+    const exportWrap = document.createElement('div');
+    exportWrap.style.position = 'fixed';
+    exportWrap.style.left = '-9999px';
+    exportWrap.style.top = '0';
+    exportWrap.style.width = '210mm';
+    exportWrap.innerHTML = html;
+    document.body.appendChild(exportWrap);
+    const exportTarget = (exportWrap.querySelector('#pdf-export-container') as HTMLElement | null) || exportWrap;
+
+    addProcessingStep('Converting to PDF...', 78);
+    updateProgress(78, 'Converting to PDF...');
+
+    const html2PdfOptions = {
+      margin: 0,
+      filename: fileName,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'], avoid: ['.avoid-break', '.section-block', '.table-container', 'table', 'tr'] },
+    } as any;
+
+    await html2pdf()
+      .set(html2PdfOptions)
+      .from(exportTarget as HTMLElement)
+      .save();
+
+    document.body.removeChild(exportWrap);
 
     addProcessingStep('PDF downloaded successfully \u2714', 88);
     updateProgress(88);
@@ -1625,7 +1659,7 @@ btnDownloadPdf.addEventListener('click', async () => {
   } finally {
     // Reset button and hide overlay after a short delay
     setTimeout(() => {
-      processingOverlay.classList.add('hidden');
+      hideProcessingOverlay();
       resetProcessingOverlay();
     }, 1200);
     btnDownloadPdf.disabled = false;
@@ -1806,7 +1840,7 @@ async function processFileSelection(file: File) {
 async function processPdfFile(file: File) {
   processingTitle.textContent = "Processing PDF";
   processingSubtitle.textContent = "Extracting text content from the document...";
-  processingOverlay.classList.remove('hidden');
+  showProcessingOverlay();
   try {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
@@ -1837,7 +1871,7 @@ async function processPdfFile(file: File) {
   } catch (error: any) {
     addSystemMessage({ role: 'agent', content: `🚫 Failed to extract PDF text: ${error.message}` });
   } finally {
-    processingOverlay.classList.add('hidden');
+    hideProcessingOverlay();
   }
 }
 
@@ -1880,7 +1914,7 @@ ${trimmed}`;
 async function processMarkdownFile(file: File) {
   processingTitle.textContent = "Processing Markdown";
   processingSubtitle.textContent = "Reading and analyzing content...";
-  processingOverlay.classList.remove('hidden');
+  showProcessingOverlay();
   try {
     const text = await file.text();
 
@@ -1903,14 +1937,14 @@ async function processMarkdownFile(file: File) {
   } catch (error: any) {
     addSystemMessage({ role: 'agent', content: `Ã¢ÂÅ’ Failed to read Markdown file: ${error.message}` });
   } finally {
-    processingOverlay.classList.add('hidden');
+    hideProcessingOverlay();
   }
 }
 
 async function processJsonFile(file: File) {
   processingTitle.textContent = "Processing JSON";
   processingSubtitle.textContent = "Parsing and analyzing structured data...";
-  processingOverlay.classList.remove('hidden');
+  showProcessingOverlay();
   try {
     const text = await file.text();
     const cleaned = text.replace(/```json\n?/gi, '').replace(/```/g, '').trim();
@@ -1936,7 +1970,7 @@ async function processJsonFile(file: File) {
   } catch (error: any) {
     addSystemMessage({ role: 'agent', content: `Ã¢ÂÅ’ Failed to parse JSON file: ${error.message}` });
   } finally {
-    processingOverlay.classList.add('hidden');
+    hideProcessingOverlay();
   }
 }
 
